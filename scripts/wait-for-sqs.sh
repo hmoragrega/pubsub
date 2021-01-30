@@ -6,8 +6,8 @@ timeout=20
 while :
 do
   	status=$(curl http://${DOCKER_IP}:4566/health 2>/dev/null)
-    if [ "${status}" == '{"services": {"sqs": "running"}}' ]; then
-      echo " SQS ready"
+    if [ "${status}" == '{"services": {"sqs": "running", "sns": "running"}}' ]; then
+      printf "\nSQS & SNS ready"
       break;
     fi;
 

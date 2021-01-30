@@ -6,5 +6,19 @@ services:
     ports:
     - 4566:4566
     environment:
-      - SERVICES=sqs
+      - DEBUG=1
+      - SERVICES=sqs,sns
       - START_WEB=0
+
+#  pulsar:
+#    image: apachepulsar/pulsar:2.7.0
+#    command: "bin/pulsar standalone"
+#    ports:
+#    - 6650:6650
+#    - 8080:8080
+#    volumes:
+#    - $PWD/.data/pulsar:/pulsar/data
+#    environment:
+#      - SERVICES=sqs
+#      - START_WEB=0
+#

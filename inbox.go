@@ -2,75 +2,78 @@ package pubsub
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"sync"
+	"time"
+)
+
+const (
+	responseTopicAttribute = "inbox-response-topic"
+	requestIDAttribute     = "inbox-request-id"
+	requestedAtAttribute   = "inbox-requested-at"
 )
 
 var (
-	ErrInboxNotInitialized = errors.New("inbox not initialized")
-	ErrInboxClosed         = errors.New("inbox is closed")
-	ErrNilRequest          = errors.New("request is nil")
-	ErrEmptyRequestID      = errors.New("empty request ID")
-	ErrRequestAlreadySent  = errors.New("request already sent")
-	ErrSendingRequest      = errors.New("cannot send request")
+	ErrRequestAlreadySent = errors.New("request already sent")
+	ErrSendingRequest     = errors.New("cannot send request")
 )
 
+type Response struct {
+	RequestID   string
+	Request     *Message
+	Response    *Message
+	RequestedAt time.Time
 
-type Publisher interface {
-	Publish(ctx context.Context, body []byte, attributes Attributes) error
+	// "miss" indicates that the request was not found and
+	// couldn't be answered.
+	//
+	// Watch out when true as the request will be nil.
+	Miss bool
 }
 
 type Inbox struct {
-	// OnMiss is an optional callback that will be triggered if
-	// a response was not expected.
-	//
-	// This is a normal scenario with timeout, it's responsibility
-	// of the caller to decide if it's an error
-	OnMiss func(message Message)
+	// OnResponse is an optional callback that will be triggered
+	// when a response is received in this inbox.
+	OnResponse func(response *Response)
 
-	pub      Publisher
-	requests map[string]chan Message
+	Publisher *Publisher
+
+	// response topic for this instance.
+	Topic string
+
+	requests map[string]requestAddress
 	mx       sync.RWMutex
-	done     chan struct{}
-	started  bool
-	stopped  bool
-	cancel   func()
-}
-
-func NewInbox(pub Publisher) *Inbox {
-	i := &Inbox{
-		pub:      pub,
-		requests: make(map[string]chan Message),
-	}
-	i.subscribe()
-	return i
 }
 
 // SendWithTimeout sends the request and waits until:
 // - the response is available.
 // - the given context is done.
-func (x *Inbox) Send(ctx context.Context, request Message) (Message, error) {
-	if request == nil {
-		return nil, ErrNilRequest
+func (x *Inbox) Request(ctx context.Context, topic string, request Message) (*Message, error) {
+	var id []byte
+	if len(request.ID) > 0 {
+		id = request.ID
+	} else {
+		id = NewID()
 	}
-	rID := request.ID()
-	if rID == "" {
-		return nil, ErrEmptyRequestID
-	}
-	if err := x.canSend(); err != nil {
-		return nil, err
-	}
-	c, err := x.waitFor(rID)
+	requestID := base64.StdEncoding.EncodeToString(id)
+
+	// inject the attributes so we know where to answer.
+	request.SetAttribute(responseTopicAttribute, x.Topic)
+	request.SetAttribute(requestIDAttribute, requestID)
+	request.SetAttribute(requestedAtAttribute, time.Now().Format(time.RFC3339Nano))
+
+	c, err := x.waitFor(requestID, &request)
 	if err != nil {
 		return nil, err
 	}
 
-	// make sure that whatever the result, we clean
-	// the pending request.
-	defer x.delete(rID)
+	// make sure that whatever the result,
+	// we remove the pending request.
+	defer x.delete(requestID)
 
-	if err := x.pub.Publish(ctx, request.Body(), request.Attributes()); err != nil {
+	if err := x.Publisher.Publish(ctx, topic, request); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrSendingRequest, err)
 	}
 
@@ -78,66 +81,73 @@ func (x *Inbox) Send(ctx context.Context, request Message) (Message, error) {
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case res := <-c:
-		return res, nil
+		return res.Response, nil
 	}
 }
 
-func (x *Inbox) Close(ctx context.Context) error {
-	x.mx.Lock()
-	if x.stopped {
-		x.mx.Unlock()
-		return nil
+// Response sends a response to a request.
+func (x *Inbox) Response(ctx context.Context, request, response *Message) error {
+	topic := request.GetAttribute(responseTopicAttribute)
+	if topic == "" {
+		return fmt.Errorf("missing response topic in request")
 	}
-	x.stopped = true
-	x.cancel()
-	x.mx.Unlock()
+	requestID := request.GetAttribute(requestIDAttribute)
+	if requestID == "" {
+		return fmt.Errorf("missing request ID")
+	}
 
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-x.done:
-		return nil
+	requestedAt := request.GetAttribute(requestedAtAttribute)
+
+	response.SetAttribute(requestIDAttribute, requestID)
+	response.SetAttribute(requestedAtAttribute, requestedAt)
+
+	if err := x.Publisher.Publish(ctx, topic, *response); err != nil {
+		return fmt.Errorf("cannot send response: %v", err)
 	}
+	return nil
 }
 
-// subscribe will start consuming messages from the publisher.
-// To stop consuming and free the resources call Close.
-func (x *Inbox) subscribe() {
-	ctx, cancel := context.WithCancel(context.Background())
+// HandleMessage is the message handler for the responses
+func (x *Inbox) HandleMessage(_ context.Context, response *Message) error {
+	requestID := response.GetAttribute(requestIDAttribute)
+	if requestID == "" {
+		return fmt.Errorf("missing request ID")
+	}
 
-	x.mx.Lock()
-	x.done = make(chan struct{}, 1)
-	x.cancel = cancel
-	x.started = true
-	x.stopped = false
-	x.mx.Unlock()
+	var requestedAt time.Time
+	if t := response.GetAttribute(requestedAtAttribute); t != "" {
+		requestedAt, _ = time.Parse(time.RFC3339Nano, t)
+	}
 
-	go func() {
+	r := &Response{
+		RequestID:   requestID,
+		Response:    response,
+		RequestedAt: requestedAt,
+	}
+
+	address, ok := x.pop(requestID)
+	if !ok {
+		r.Miss = true
+	} else {
+		r.Request = address.request
 		defer func() {
-			x.done <- struct{}{}
+			address.c <- r
+			close(address.c)
 		}()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			}
-			/*case res := <-x.pub.Subscribe():
-				c, ok := x.pop(res.ID())
-				if !ok {
-					if x.OnMiss != nil {
-						x.OnMiss(res)
-					}
-					continue
-				}
-				c <- res
-			}*/
-		}
-	}()
+	}
+	if f := x.OnResponse; f != nil {
+		f(r)
+	}
+	return nil
 }
 
-func (x *Inbox) pop(id string) (chan<- Message, bool) {
+func (x *Inbox) pop(id string) (requestAddress, bool) {
 	x.mx.Lock()
 	defer x.mx.Unlock()
+	if x.requests == nil {
+		x.requests = make(map[string]requestAddress)
+	}
+
 	c, ok := x.requests[id]
 	if ok {
 		delete(x.requests, id)
@@ -146,32 +156,30 @@ func (x *Inbox) pop(id string) (chan<- Message, bool) {
 	return c, ok
 }
 
-func (x *Inbox) canSend() error {
-	x.mx.RLock()
-	defer x.mx.RUnlock()
-
-	if !x.started {
-		return ErrInboxNotInitialized
-	}
-	if x.stopped {
-		return ErrInboxClosed
-	}
-
-	return nil
+type requestAddress struct {
+	c       chan *Response
+	request *Message
 }
 
 // waitFor creates a channel to receive the response
 // for a request. It fails if the request ID is not unique.
-func (x *Inbox) waitFor(id string) (<-chan Message, error) {
+func (x *Inbox) waitFor(id string, request *Message) (<-chan *Response, error) {
 	x.mx.Lock()
 	defer x.mx.Unlock()
+	if x.requests == nil {
+		x.requests = make(map[string]requestAddress)
+	}
 
 	if _, ok := x.requests[id]; ok {
 		return nil, ErrRequestAlreadySent
 	}
 
-	c := make(chan Message, 1)
-	x.requests[id] = c
+	c := make(chan *Response, 1)
+
+	x.requests[id] = requestAddress{
+		request: request,
+		c:       c,
+	}
 
 	return c, nil
 }

@@ -2,74 +2,67 @@ package aws
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"reflect"
-	"sync"
+	"strings"
 	"unsafe"
 
 	"github.com/aws/aws-sdk-go/service/sns"
+	"github.com/aws/aws-sdk-go/service/sqs"
 	"github.com/hmoragrega/pubsub"
 )
 
-var (
-	ErrEmptyTopicsMap = errors.New("empty topics map")
-	ErrTopicNotFound  = errors.New("could not find topic ARN")
+var ErrTopicNotFound = errors.New("could not find topic ARN")
+
+const (
+	idAttributeKey        = "id"
+	versionAttributeKey   = "version"
+	keyAttributeKey       = "key"
+	nameAttributeKey      = "name"
+	customAttributePrefix = "x-custom-"
 )
 
 type Publisher struct {
-	sns    *sns.SNS
-	topics map[string]string
-	mx     sync.RWMutex
+	sns       *sns.SNS
+	topicARNs map[string]string
 }
 
-type PublisherOption func(*Publisher)
-
-func WithPublisherSNS(svc *sns.SNS) PublisherOption {
-	return func(s *Publisher) {
-		s.sns = svc
+func NewPublisher(svc *sns.SNS, topicARNs map[string]string) *Publisher {
+	return &Publisher{
+		sns:       svc,
+		topicARNs: topicARNs,
 	}
-}
-
-func NewPublisher(topics map[string]string, opts ...PublisherOption) (*Publisher, error) {
-	if len(topics) == 0 {
-		return nil, ErrEmptyTopicsMap
-	}
-	p := &Publisher{
-		topics: topics,
-	}
-	for _, opt := range opts {
-		opt(p)
-	}
-	if p.sns == nil {
-		svc, err := NewDefaultSNS()
-		if err != nil {
-			return nil, err
-		}
-		p.sns = svc
-	}
-
-	return p, nil
-}
-
-func MustPublisher(publisher *Publisher, err error) *Publisher {
-	if err != nil {
-		panic(err)
-	}
-	return publisher
 }
 
 func (p *Publisher) Publish(ctx context.Context, topic string, env pubsub.Envelope) error {
-	topicARN, ok := p.topics[topic]
-	if !ok {
-		return ErrTopicNotFound
+	var topicARN string
+
+	// inbox responses will send directly to the topic ARN
+	switch pos := strings.Index(topic, "arn:aws:sns"); pos {
+	case 0:
+		topicARN = topic
+	default:
+		arn, ok := p.topicARNs[topic]
+		if !ok {
+			return fmt.Errorf("%w: %s", ErrTopicNotFound, topic)
+		}
+		topicARN = arn
 	}
 
+	// every message needs to have a message group in sns
+	key := env.Key
+	if key == "" {
+		key = "void"
+	}
+
+	base64ID := base64.StdEncoding.EncodeToString(env.ID)
 	_, err := p.sns.PublishWithContext(ctx, &sns.PublishInput{
+		MessageDeduplicationId: &base64ID,
 		Message:                stringPtr(env.Body),
-		MessageAttributes:      attributesToSNS(env.Attributes),
-		MessageDeduplicationId: stringPtr(env.ID),
-		MessageGroupId:         &env.Key,
+		MessageAttributes:      encodeAttributes(&env),
+		MessageGroupId:         &key,
 		TopicArn:               &topicARN,
 	})
 	if err != nil {
@@ -78,19 +71,54 @@ func (p *Publisher) Publish(ctx context.Context, topic string, env pubsub.Envelo
 	return nil
 }
 
-func (p *Publisher) topicARN(topic string) (string, error) {
-	p.mx.RLock()
-	defer p.mx.RUnlock()
-
-	topicARN, ok := p.topics[topic]
-	if !ok {
-		return "", ErrTopicNotFound
+func encodeAttributes(env *pubsub.Envelope) map[string]*sns.MessageAttributeValue {
+	attributes := map[string]*sns.MessageAttributeValue{
+		idAttributeKey: {
+			DataType:    binaryDataType,
+			BinaryValue: env.ID,
+		},
+		versionAttributeKey: {
+			DataType:    stringDataType,
+			StringValue: &env.Version,
+		},
+		nameAttributeKey: {
+			DataType:    stringDataType,
+			StringValue: &env.Name,
+		},
 	}
-
-	return topicARN, nil
+	if env.Key != "" {
+		attributes[keyAttributeKey] = &sns.MessageAttributeValue{
+			DataType:    stringDataType,
+			StringValue: &env.Key,
+		}
+	}
+	for k, v := range env.Attributes {
+		v := v
+		k := customAttributePrefix + k
+		attributes[k] = &sns.MessageAttributeValue{
+			DataType:    stringDataType,
+			StringValue: &v,
+		}
+	}
+	return attributes
 }
 
-// stringPtr unsafe copy-free byte slice to string pointer.
+func decodeAttributes(attributes map[string]*sqs.MessageAttributeValue) map[string]string {
+	custom := make(map[string]string)
+	for k, v := range attributes {
+		if strings.Index(k, customAttributePrefix) != 0 {
+			continue
+		}
+		k := k[len(customAttributePrefix):]
+		var value string
+		if v.StringValue != nil {
+			value = *v.StringValue
+		}
+		custom[k] = value
+	}
+	return custom
+}
+
 func stringPtr(b []byte) *string {
 	sh := (*reflect.SliceHeader)(unsafe.Pointer(&b))
 	return (*string)(unsafe.Pointer(&reflect.StringHeader{

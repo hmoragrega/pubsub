@@ -19,7 +19,7 @@ func TestPublisher_Publish(t *testing.T) {
 
 	p, err := NewPublisher(
 		queueURL,
-		WithPublisherSQS(sqsTestInstance),
+		WithPublisherSQS(sqsTest),
 	)
 	if err != nil {
 		t.Fatal("cannot create publisher", err)
@@ -35,7 +35,7 @@ func TestPublisher_Publish(t *testing.T) {
 		t.Fatal("cannot publish message", err)
 	}
 
-	out, err := sqsTestInstance.ReceiveMessageWithContext(ctx, &sqs.ReceiveMessageInput{
+	out, err := sqsTest.ReceiveMessageWithContext(ctx, &sqs.ReceiveMessageInput{
 		QueueUrl:              &queueURL,
 		MessageAttributeNames: []*string{aws.String("All")},
 		WaitTimeSeconds:       aws.Int64(1),

@@ -2,42 +2,96 @@ package aws
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/sqs"
 	"github.com/hmoragrega/pubsub"
+	"github.com/hmoragrega/workers"
 )
 
 var (
+	ErrConsumerStopped = errors.New("consumer stopped")
+
 	maxNumberOfMessages int64 = 10
 	waitTimeSeconds     int64 = 20
 	allAttributes             = []*string{aws.String("All")}
 )
 
-var _ pubsub.Consumer = (*QueueConsumer)(nil)
+var _ pubsub.MessageConsumer = (*Consumer)(nil)
 
-type QueueConsumer struct {
-	sqs      *sqs.SQS
+// MessageConsumer for AWS SQS.
+type Consumer struct {
 	queueURL string
-	results  chan pubsub.ConsumeResult
+	sqs      *sqs.SQS
+	pool     pool
+	results  chan consumeResult
 }
 
-func NewQueueConsumer(svc *sqs.SQS, queueURL string) *QueueConsumer {
-	return &QueueConsumer{
-		sqs:      svc,
-		queueURL: queueURL,
-		results:  make(chan pubsub.ConsumeResult, maxNumberOfMessages),
+// ConsumerOption configuration option
+// for the consumer.
+type ConsumerOption func(*Consumer)
+
+type pool interface {
+	Start(job workers.Job) error
+	Close(ctx context.Context) error
+}
+
+// WithPool allows to pass a custom pool.
+func WithPool(pool pool) ConsumerOption {
+	return func(c *Consumer) {
+		c.pool = pool
 	}
 }
 
-func (c *QueueConsumer) Consume() <-chan pubsub.ConsumeResult {
-	return c.results
+func NewConsumer(svc *sqs.SQS, queueURL string, opts ...ConsumerOption) *Consumer {
+	c := &Consumer{
+		sqs:      svc,
+		queueURL: queueURL,
+		results:  make(chan consumeResult, maxNumberOfMessages),
+	}
+	for _, opt := range opts {
+		opt(c)
+	}
+	if c.pool == nil {
+		c.pool = workers.New()
+	}
+	return c
 }
 
-// Do consumes the next batch of messages in the queue and
+func (c *Consumer) Start() (err error) {
+	return c.pool.Start(workers.JobFunc(c.consume))
+}
+
+// Next consumes the next batch of messages in the queue and
 // puts them in the messages channel.
-func (c *QueueConsumer) Do(ctx context.Context) {
+func (c *Consumer) Next(ctx context.Context) (pubsub.ReceivedMessage, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case res, ok := <-c.results:
+		if !ok {
+			return nil, ErrConsumerStopped
+		}
+		return res.message, res.err
+	}
+}
+
+// Stop stops consuming messages.
+func (c *Consumer) Stop(ctx context.Context) error {
+	err := c.pool.Close(ctx)
+	if err != nil {
+		return err
+	}
+
+	close(c.results)
+	return nil
+}
+
+// consumes the next batch of messages in
+// the queue and puts them in the messages channel.
+func (c *Consumer) consume(ctx context.Context) error {
 	out, err := c.sqs.ReceiveMessageWithContext(ctx, &sqs.ReceiveMessageInput{
 		QueueUrl:              &c.queueURL,
 		MaxNumberOfMessages:   &maxNumberOfMessages,
@@ -45,40 +99,65 @@ func (c *QueueConsumer) Do(ctx context.Context) {
 		AttributeNames:        allAttributes,
 		MessageAttributeNames: allAttributes,
 	})
-	if ctx.Err() != nil {
-		return
-	}
 	if err != nil {
-		c.results <- pubsub.ConsumeResult{Err: err}
-		return
+		// aws/http library does not return
+		// a wrapped context.Canceled
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		c.results <- consumeResult{err: err}
+		return err
 	}
-	if len(out.Messages) == 0 {
-		return
+	messages, err := c.wrapMessages(out.Messages)
+	if err != nil {
+		c.results <- consumeResult{err: err}
+		return err
 	}
-	for _, m := range out.Messages {
-		msg, err := c.wrapMessage(m)
-		c.results <- pubsub.ConsumeResult{Message: msg, Err: err}
+	for _, message := range messages {
+		c.results <- consumeResult{message: message}
 	}
+	return nil
 }
 
-func (c *QueueConsumer) wrapMessage(in *sqs.Message) (out pubsub.Message, err error) {
-	if in.MessageId == nil || len(*in.MessageId) == 0 {
-		return nil, pubsub.ErrEmptyMessageID
+func (c *Consumer) wrapMessages(in []*sqs.Message) (out []pubsub.ReceivedMessage, err error) {
+	out = make([]pubsub.ReceivedMessage, len(in))
+	for i, m := range in {
+		var awsMsgID string
+		if m.ReceiptHandle != nil {
+			awsMsgID = *m.MessageId
+		}
+		msgID, ok := m.MessageAttributes[idAttributeKey]
+		if !ok {
+			return nil, fmt.Errorf("message without ID: AWS message ID %s", awsMsgID)
+		}
+		version, ok := m.MessageAttributes[versionAttributeKey]
+		if !ok {
+			return nil, fmt.Errorf("message without version: AWS message ID %s", awsMsgID)
+		}
+		var key string
+		if x, ok := m.MessageAttributes[keyAttributeKey]; ok {
+			key = *x.StringValue
+		}
+		name, ok := m.MessageAttributes[nameAttributeKey]
+		if !ok {
+			return nil, fmt.Errorf("message without key: AWS message ID %s", awsMsgID)
+		}
+		out[i] = &message{
+			id:               msgID.BinaryValue,
+			version:          version.StringValue,
+			key:              &key,
+			name:             name.StringValue,
+			body:             []byte(*m.Body),
+			attributes:       decodeAttributes(m.MessageAttributes),
+			sqsMessageID:     m.MessageId,
+			sqsReceiptHandle: m.ReceiptHandle,
+			subscriber:       c,
+		}
 	}
-	if in.Body == nil || len(*in.Body) == 0 {
-		return nil, pubsub.ErrEmptyMessageBody
-	}
-	return &Message{
-		subscriber:       c,
-		id:               in.MessageId,
-		body:             []byte(*in.Body),
-		attributes:       attributesFromSQS(in.MessageAttributes),
-		sqsMessageID:     in.MessageId,
-		sqsReceiptHandle: in.ReceiptHandle,
-	}, nil
+	return out, nil
 }
 
-func (c *QueueConsumer) deleteMessage(ctx context.Context, msg *Message) error {
+func (c *Consumer) deleteMessage(ctx context.Context, msg *message) error {
 	_, err := c.sqs.DeleteMessageWithContext(ctx, &sqs.DeleteMessageInput{
 		ReceiptHandle: msg.sqsReceiptHandle,
 		QueueUrl:      &c.queueURL,
@@ -87,4 +166,14 @@ func (c *QueueConsumer) deleteMessage(ctx context.Context, msg *Message) error {
 		return fmt.Errorf("cannot delete messages: %v", err)
 	}
 	return nil
+}
+
+// ConsumeResult is the result of consuming
+// messages from the queue.
+//
+// It contains a list of consumed message
+// or an error if the operation failed.
+type consumeResult struct {
+	message pubsub.ReceivedMessage
+	err     error
 }

@@ -9,10 +9,13 @@ type MessageID = []byte
 // Attributes a list of message attributes.
 type Attributes = map[string]string
 
-// Message incoming message consumed by the subscriber.
-type Message interface {
+// ReceivedMessage incoming message consumed by the subscriber.
+type ReceivedMessage interface {
 	// ID of the message, it should be unique.
-	ID() string
+	ID() []byte
+
+	// Name of the message.
+	Name() string
 
 	// Key grouping key of the message.
 	Key() string
@@ -20,42 +23,44 @@ type Message interface {
 	// Body body of the message.
 	Body() []byte
 
-	// Attribute returns one attribute of
-	// the message. The second parameter
-	// indicates if the attribute was set
-	// or not.
-	Attribute(key string) (string, bool)
+	// Version of the envelope.
+	Version() string
 
-	// Returns the whole list of attributes.
+	// Message attributes.
 	Attributes() Attributes
 
 	// Ack acknowledges the message.
 	Ack(ctx context.Context) error
 }
 
-
-// Envelope is a struct that wraps the
-// message information for publishing.
-type Envelope struct {
-	ID         MessageID
-	Key        string
-	Body       []byte
+// Message represent the information that
+// we want to transmit.
+type Message struct {
+	// ID of the message, if empty a new one will
+	// be generated automatically
+	ID MessageID
+	// Name of the message
+	Name string
+	// Key groups the message of the same type.
+	// Different transports may try to guarantee
+	// the order for messages with the same key.
+	Key string
+	// Data that we want to transmit.
+	Data interface{}
+	// Message attributes
 	Attributes Attributes
 }
 
-// NewEnvelope constructor helper for creating new envelopes
-// initializing the attributes map.
-func NewEnvelope(key string, body []byte) *Envelope {
-	return NewEnvelopeWithAttributes(key, body, make(map[string]string))
+func (m *Message) SetAttribute(key, value string) {
+	if m.Attributes == nil {
+		m.Attributes = make(Attributes)
+	}
+	m.Attributes[key] = value
 }
 
-// NewEnvelope constructor helper for creating new envelopes
-// accepting extra message attributes.
-func NewEnvelopeWithAttributes(key string, body []byte, attributes map[string]string) *Envelope {
-	return &Envelope{
-		ID:         NewID(),
-		Key:        key,
-		Body:       body,
-		Attributes: attributes,
+func (m *Message) GetAttribute(key string) string {
+	if m.Attributes == nil {
+		return ""
 	}
+	return m.Attributes[key]
 }
