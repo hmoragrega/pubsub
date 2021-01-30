@@ -1,2 +1,5 @@
 vendor
-coverage.*
+
+coverage.out
+/coverage/**
+!/coverage/.gitkeep

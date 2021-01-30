@@ -1,7 +1,8 @@
 
 export DOCKER_IP ?= 127.0.0.1
 
-COVERAGE_FILE = coverage.out
+COVERAGE_FILE  = coverage.out
+COVERAGE_FILES = coverage/*.cov
 
 .PHONY: up
 up:
@@ -10,7 +11,9 @@ up:
 
 .PHONY: test
 test: up
-	@go test -race -v -tags=integration -coverpkg=./... -coverprofile=$(COVERAGE_FILE) ./...
+	@go test -race -v -tags=integration -coverpkg=./... -coverprofile=coverage/pubsub.cov ./...
+	@cd aws
+	@go test -race -v -tags=integration -coverpkg=./... -coverprofile=coverage/aws.cov ./...
 
 .PHONY: clean
 clean:
@@ -23,3 +26,8 @@ coverage: test
 .PHONY: coverage-html
 coverage-html: test
 	@go tool cover -html=$(COVERAGE_FILE)
+
+.PHONY: coverage-merge
+coverage-merge:
+	@echo 'mode: atomic' > $(COVERAGE_FILE)
+	@tail -q -n +2 $(COVERAGE_FILES) >> $(COVERAGE_FILE)
