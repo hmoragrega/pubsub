@@ -1,4 +1,6 @@
 github.com/google/uuid v1.2.0 h1:qJYtXnJRWmpe7m/3XlyhrsLrEURqHRM2kxzoxXqyUDs=
 github.com/google/uuid v1.2.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
-golang.org/x/sync v0.0.0-20201207232520-09787c993a3a h1:DcqTD9SDLc+1P/r1EmRBwnVsrOwW+kk2vWf9n+1sGhs=
-golang.org/x/sync v0.0.0-20201207232520-09787c993a3a/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
+github.com/hmoragrega/workers v0.3.1 h1:yNAZF4aCISiJi0uvGnEs3M9q//42VVJxJlyYQiaaYqQ=
+github.com/hmoragrega/workers v0.3.1/go.mod h1:8etzXBAarcewuZu4vI0Bh+QpzfEGdCmNMIuo/DKkP0A=
+github.com/hmoragrega/workers v1.0.0-rc1 h1:ECVtaXlTFgLflS2v7fcZLim/jeR4r3OhPXWkeknyiS8=
+github.com/hmoragrega/workers v1.0.0-rc1/go.mod h1:8etzXBAarcewuZu4vI0Bh+QpzfEGdCmNMIuo/DKkP0A=

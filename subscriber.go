@@ -3,6 +3,9 @@ package pubsub
 import (
 	"context"
 	"errors"
+	"sync"
+
+	"github.com/hmoragrega/workers"
 )
 
 var (
@@ -25,6 +28,8 @@ type ConsumeResult struct {
 // Consumer can consume messages
 // from a pub/sub system and return them.
 type Consumer interface {
+	Do(ctx context.Context)
+
 	// Consume the next message in the queue. If there is no message
 	// available it has to block until a new message is received or the
 	// context expires
@@ -32,14 +37,35 @@ type Consumer interface {
 }
 
 type Subscriber struct {
-	Consumer Consumer
+	*workers.Pool
+	messages <-chan ConsumeResult
+	start    sync.Once
+}
+
+func (s *Subscriber) Start(consumer Consumer) error {
+	s.init()
+	err := s.Pool.Start(consumer)
+	if err != nil {
+		return err
+	}
+	s.messages = consumer.Consume()
+	return nil
 }
 
 func (s *Subscriber) Next(ctx context.Context) (Message, error) {
+	s.init()
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
-	case result := <-s.Consumer.Consume():
+	case result := <-s.messages:
 		return result.Message, result.Err
 	}
+}
+
+func (s *Subscriber) init() {
+	s.start.Do(func() {
+		if s.Pool == nil {
+			s.Pool = &workers.Pool{}
+		}
+	})
 }

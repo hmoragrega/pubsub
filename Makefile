@@ -6,12 +6,10 @@ COVERAGE_FILE = coverage.out
 .PHONY: up
 up:
 	@docker-compose up -d
-	@./wait-for-sqs.sh
+	@./scripts/wait-for-sqs.sh
 
 .PHONY: test
 test: up
-	@go test -race -v -tags=integration -coverpkg=./... -coverprofile=$(COVERAGE_FILE) ./...
-	cd sender/aws
 	@go test -race -v -tags=integration -coverpkg=./... -coverprofile=$(COVERAGE_FILE) ./...
 
 .PHONY: clean

@@ -15,6 +15,8 @@ var (
 	allAttributes             = []*string{aws.String("All")}
 )
 
+var _ pubsub.Consumer = (*QueueConsumer)(nil)
+
 type QueueConsumer struct {
 	sqs      *sqs.SQS
 	queueURL string

@@ -40,7 +40,6 @@ func TestQueueConsumer_Consume(t *testing.T) {
 	defer cancel()
 
 	queueURL := createTestQueue(ctx, t, "test-subscriber-subscribe")
-	s := NewQueueConsumer(sqsTestInstance, queueURL)
 
 	var (
 		wantReqID = "123"
@@ -61,29 +60,27 @@ func TestQueueConsumer_Consume(t *testing.T) {
 		t.Fatal("cannot send message", err)
 	}
 
-	// consume once.
-	s.Do(ctx)
+	var s pubsub.Subscriber
+	err = s.Start(NewQueueConsumer(sqsTestInstance, queueURL))
+	if err != nil {
+		t.Fatal("failed to start subscriber", err)
+	}
 
-	select {
-	case <-ctx.Done():
-		t.Fatal("timeout waiting for the message", ctx.Err())
-	case res := <-s.Consume():
-		if res.Err != nil {
-			t.Fatal("error receiving message", res.Err)
-		}
-		m := res.Message
-		if got := string(m.Body()); got != wantBody {
-			t.Fatalf("message body does not match, got %s, want %s", got, wantBody)
-		}
-		if got := m.ID(); got == "" {
-			t.Fatalf("message ID is empty")
-		}
-		if got, _ := m.Attribute(testRequestIDKey); got != wantReqID {
-			t.Fatalf("request ID attribute is empty")
-		}
-		if err := m.Ack(ctx); err != nil {
-			t.Fatal("cannot ack message", err)
-		}
+	m, err := s.Next(ctx)
+	if err != nil {
+		t.Fatal("error receiving message", err)
+	}
+	if got := string(m.Body()); got != wantBody {
+		t.Fatalf("message body does not match, got %s, want %s", got, wantBody)
+	}
+	if got := m.ID(); got == "" {
+		t.Fatalf("message ID is empty")
+	}
+	if got, _ := m.Attribute(testRequestIDKey); got != wantReqID {
+		t.Fatalf("request ID attribute is empty")
+	}
+	if err := m.Ack(ctx); err != nil {
+		t.Fatal("cannot ack message", err)
 	}
 }
 
@@ -112,7 +109,7 @@ func TestQueueConsumer_JobHonorContexts(t *testing.T) {
 
 	s := NewQueueConsumer(sqsTestInstance, "foo")
 
-	// consume once with context cancelled.
+	// consume once with the context cancelled.
 	s.Do(ctx)
 
 	var res pubsub.ConsumeResult
