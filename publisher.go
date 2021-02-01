@@ -27,6 +27,8 @@ type Envelope struct {
 	Body       []byte
 	Version    string
 	Attributes Attributes
+
+	// TODO OcurredAt
 }
 
 // Publisher can publish a message to the

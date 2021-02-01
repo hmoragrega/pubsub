@@ -2,6 +2,8 @@ package pulsar
 
 import (
 	"context"
+	"encoding/base32"
+	"encoding/base64"
 	"errors"
 	"fmt"
 
@@ -11,18 +13,16 @@ import (
 )
 
 var (
-	ErrConsumerStopped = errors.New("consumer stopped")
+	errConsumerStopped = errors.New("consumer stopped")
 )
 
 var _ pubsub.MessageConsumer = (*Consumer)(nil)
 
-// MessageConsumer is a non thin consumer wrapper on
-// pulsar's consumer.
+// MessageConsumer for AWS SQS.
 type Consumer struct {
-	pool     pool
-	client   pulsar.Client
+	queueURL string
 	consumer pulsar.Consumer
-	options  pulsar.ConsumerOptions
+	pool     pool
 	results  chan consumeResult
 }
 
@@ -42,11 +42,11 @@ func WithPool(pool pool) ConsumerOption {
 	}
 }
 
-func NewConsumer(client pulsar.Client, options pulsar.ConsumerOptions, opts ...ConsumerOption) *Consumer {
+func NewConsumer(consumer pulsar.Consumer, queueURL string, opts ...ConsumerOption) *Consumer {
 	c := &Consumer{
-		client:  client,
-		options: options,
-		results: make(chan consumeResult),
+		consumer: consumer,
+		queueURL: queueURL,
+		results:  make(chan consumeResult),
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -57,47 +57,96 @@ func NewConsumer(client pulsar.Client, options pulsar.ConsumerOptions, opts ...C
 	return c
 }
 
-// Close closes the subscription.
-func (c *Consumer) Start() error {
-	consumer, err := c.client.Subscribe(c.options)
-	if err != nil {
-		return fmt.Errorf("cannot subscribe to pulsar: %w", err)
-	}
-	c.consumer = consumer
+func (c *Consumer) Start() (err error) {
 	return c.pool.Start(workers.JobFunc(c.consume))
 }
 
-// Next returns the next message for the topic.
+// Next consumes the next batch of messages in the queue and
+// puts them in the messages channel.
 func (c *Consumer) Next(ctx context.Context) (pubsub.ReceivedMessage, error) {
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case res, ok := <-c.results:
 		if !ok {
-			return nil, ErrConsumerStopped
+			return nil, errConsumerStopped
 		}
 		return res.message, res.err
 	}
 }
 
-// Close closes the subscription.
-func (c *Consumer) Stop(_ context.Context) error {
-	c.consumer.Close()
+// Stop stops consuming messages.
+func (c *Consumer) Stop(ctx context.Context) error {
+	err := c.pool.Close(ctx)
+	if err != nil {
+		return err
+	}
+
+	close(c.results)
 	return nil
 }
 
 // consumes the next batch of messages in
 // the queue and puts them in the messages channel.
 func (c *Consumer) consume(ctx context.Context) error {
-	var res consumeResult
-	_, err := c.consumer.Receive(ctx)
+	msg, err := c.consumer.Receive(ctx)
 	if err != nil {
-		res.err = err
-	} else {
-		res.message = nil // TODO
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		c.results <- consumeResult{err: err}
+		return err
 	}
-	c.results <- res
-	return err
+
+	message, err := c.wrapMessage(msg)
+	if err != nil {
+		c.results <- consumeResult{err: err}
+		return err
+	}
+
+	c.results <- consumeResult{message: message}
+	return nil
+}
+
+func (c *Consumer) wrapMessage(m pulsar.Message) (out pubsub.ReceivedMessage, err error) {
+	var pulsarMsgID string
+	if x, ok := m.ID().(fmt.Stringer); ok {
+		pulsarMsgID = x.String()
+	} else {
+		pulsarMsgID = base32.HexEncoding.EncodeToString(m.ID().Serialize())
+	}
+
+	encodedID, ok := m.Properties()[idAttributeKey]
+	if !ok {
+		return nil, fmt.Errorf("message without ID: Pulsar message ID %s", pulsarMsgID)
+	}
+	version, ok := m.Properties()[versionAttributeKey]
+	if !ok {
+		return nil, fmt.Errorf("message without version: Pulsar message ID %s", pulsarMsgID)
+	}
+	var key string
+	if x, ok := m.Properties()[keyAttributeKey]; ok {
+		key = x
+	}
+	name, ok := m.Properties()[nameAttributeKey]
+	if !ok {
+		return nil, fmt.Errorf("message without name: Pulsar message ID %s", pulsarMsgID)
+	}
+	id, err := base64.StdEncoding.DecodeString(encodedID)
+	if err != nil {
+		return nil, fmt.Errorf("cannot decode message ID %q: %v", encodedID, err)
+	}
+
+	return &message{
+		id:            id,
+		version:       version,
+		key:           key,
+		name:          name,
+		body:          m.Payload(),
+		attributes:    decodeAttributes(m.Properties()),
+		consumer:      c.consumer,
+		pulsarMessage: m,
+	}, nil
 }
 
 // ConsumeResult is the result of consuming

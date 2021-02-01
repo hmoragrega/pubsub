@@ -140,7 +140,7 @@ func (c *Consumer) wrapMessages(in []*sqs.Message) (out []pubsub.ReceivedMessage
 		}
 		name, ok := m.MessageAttributes[nameAttributeKey]
 		if !ok {
-			return nil, fmt.Errorf("message without key: AWS message ID %s", awsMsgID)
+			return nil, fmt.Errorf("message without name: AWS message ID %s", awsMsgID)
 		}
 		out[i] = &message{
 			id:               msgID.BinaryValue,

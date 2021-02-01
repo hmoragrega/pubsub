@@ -9,7 +9,7 @@ up:
 	@mkdir -p .data/pulsar
 	@docker-compose up -d
 	@./scripts/wait-for-sqs.sh
-	# @./scripts/wait-for-pulsar.sh
+	@./scripts/wait-for-pulsar.sh
 
 .PHONY: test
 test: up
