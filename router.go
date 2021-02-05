@@ -44,22 +44,14 @@ type Router struct {
 // ContinueOnErrors is false (default),
 // the router will stop and return the
 // first consumer error.
-func (r *Router) Run(ctx context.Context) error {
-	// TODO improvement: start async
-	for _, c := range r.consumers {
-		if err := c.Subscribe(); err != nil {
-			// TODO stop started on failure.
-			return err
-		}
+func (r *Router) Run(ctx context.Context) (err error) {
+	if err := r.start(r.consumers); err != nil {
+		return err
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
 
-	var (
-		err error
-		wg  sync.WaitGroup
-	)
-
+	var wg sync.WaitGroup
 	for _, c := range r.consumers {
 		wg.Add(1)
 		go func(c *Consumer) {
@@ -78,7 +70,7 @@ func (r *Router) Run(ctx context.Context) error {
 	}
 
 	wg.Wait()
-	return err
+	return // named return err
 }
 
 func (r *Router) RegisterConsumer(topic string, consumer *Consumer) error {
@@ -139,4 +131,51 @@ func (r *Router) RegisterSubscriber(topic string, subscriber Subscriber, resolve
 		},
 		DisableAutoAck: r.DisableAutoAck,
 	})
+}
+
+func (r *Router) start(consumers map[string]*Consumer) (err error) {
+	var (
+		started []*Consumer
+		wg      sync.WaitGroup
+		mx      sync.Mutex
+	)
+
+	for _, c := range consumers {
+		wg.Add(1)
+		go func(c *Consumer) {
+			defer wg.Done()
+			subscribeErr := c.Subscribe()
+
+			mx.Lock()
+			defer mx.Unlock()
+
+			if subscribeErr != nil {
+				if err == nil {
+					err = subscribeErr
+				}
+				return
+			}
+			started = append(started, c)
+		}(c)
+	}
+
+	wg.Wait()
+
+	if err != nil {
+		r.stop(context.Background(), started)
+	}
+
+	return err
+}
+
+func (r *Router) stop(ctx context.Context, consumers []*Consumer) {
+	var wg sync.WaitGroup
+	for _, c := range consumers {
+		wg.Add(1)
+		go func(c *Consumer) {
+			defer wg.Done()
+			_ = c.Stop(ctx)
+		}(c)
+	}
+	wg.Wait()
 }
