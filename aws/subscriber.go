@@ -60,7 +60,7 @@ func NewSubscriber(svc *sqs.SQS, queueURL string, opts ...SubscriberOption) *Sub
 	return c
 }
 
-func (s *Subscriber) Start() (err error) {
+func (s *Subscriber) Subscribe() (err error) {
 	return s.pool.Start(workers.JobFunc(s.consume))
 }
 

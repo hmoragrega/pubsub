@@ -68,10 +68,26 @@ func TestInbox(t *testing.T) {
 		Topic:     instanceTopicARN,
 	}
 
-	// math service can do some hard math.
-	mathSvcSubscriber := &pubsub.Consumer{
-		Subscriber: NewSubscriber(sqsTest, mathSvcQueueURL),
-		HandlerResolver: pubsub.Dispatcher(map[string]pubsub.MessageHandler{
+	router := pubsub.Router{
+		Unmarshaler: &jsonMarshaler,
+	}
+
+	err := router.RegisterSubscriber(
+		instanceTopic,
+		NewSubscriber(sqsTest, instanceQueueURL),
+		pubsub.Dispatcher(map[string]pubsub.MessageHandler{
+			sumResponseEventName:      letterbox,
+			subtractResponseEventName: letterbox,
+		}),
+	)
+	if err != nil {
+		t.Fatal("cannot register instance subscriber", err)
+	}
+
+	err = router.RegisterSubscriber(
+		mathSvcTopic,
+		NewSubscriber(sqsTest, mathSvcQueueURL),
+		pubsub.Dispatcher(map[string]pubsub.MessageHandler{
 			sumRequestEventName: pubsub.MessageHandlerFunc(func(ctx context.Context, request *pubsub.Message) error {
 				req := request.Data.(*sumRequest)
 				x := req.A + req.B
@@ -89,34 +105,14 @@ func TestInbox(t *testing.T) {
 				})
 			}),
 		}),
-		Unmarshaler: &jsonMarshaler,
+	)
+	if err != nil {
+		t.Fatal("cannot register math service subscriber", err)
 	}
 
-	// the letterbox acts as message handler for the responses.
-	instanceConsumer := &pubsub.Consumer{
-		Subscriber: NewSubscriber(sqsTest, instanceQueueURL),
-		HandlerResolver: pubsub.Dispatcher(map[string]pubsub.MessageHandler{
-			sumResponseEventName:      letterbox,
-			subtractResponseEventName: letterbox,
-		}),
-		Unmarshaler: &jsonMarshaler,
-	}
-
-	consumerGroup := pubsub.ConsumerGroup{Consumers: []*pubsub.Consumer{
-		mathSvcSubscriber,
-		instanceConsumer,
-	}}
-	consumerGroup.MustStartAll(ctx)
-
-	consumersStopped := make(chan struct{})
+	routerStopped := make(chan error)
 	go func() {
-		consumerGroup.Consume(ctx)
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		if errs := consumerGroup.Stop(ctx); len(errs) > 0 {
-			t.Error("cannot stop all consumers", errs)
-		}
-		close(consumersStopped)
+		routerStopped <- router.Run(ctx)
 	}()
 
 	// do a sum
@@ -148,6 +144,9 @@ func TestInbox(t *testing.T) {
 	select {
 	case <-time.NewTimer(time.Second).C:
 		t.Fatal("timeout waiting for a clean stop!")
-	case <-consumersStopped:
+	case err := <-routerStopped:
+		if err != nil {
+			t.Fatal("router stopped with an error!", err)
+		}
 	}
 }

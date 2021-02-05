@@ -30,7 +30,7 @@ func TestMain(m *testing.M) {
 	sess, err := session.NewSessionWithOptions(session.Options{
 		Config: aws.Config{
 			Credentials: credentials.NewStaticCredentials("id", "secret", "token"),
-			Endpoint:    aws.String(getEnvOrDefault("AWS_ENDPOINT", "localhost:4566")),
+			Endpoint:    aws.String(getEnvOrDefault("AWS_ENDPOINT", "localhost:4100")),
 			Region:      aws.String(getEnvOrDefault("AWS_REGION", "us-east-1")),
 			DisableSSL:  aws.Bool(true),
 		},
@@ -48,7 +48,7 @@ func TestQueueConsumer_ConsumeError(t *testing.T) {
 	defer cancel()
 
 	c := NewSubscriber(sqsTest, "bad-queue")
-	if err := c.Start(); err != nil {
+	if err := c.Subscribe(); err != nil {
 		t.Fatal("failed to start consumer", err)
 	}
 	t.Cleanup(func() {
@@ -68,7 +68,7 @@ func TestQueueConsumer_JobHonorContexts(t *testing.T) {
 	cancel()
 
 	c := NewSubscriber(sqsTest, "foo")
-	if err := c.Start(); err != nil {
+	if err := c.Subscribe(); err != nil {
 		t.Fatal("failed to start consumer", err)
 	}
 	t.Cleanup(func() {
@@ -159,45 +159,36 @@ func TestPubSubIntegration(t *testing.T) {
 		return nil
 	}
 
-	var (
-		messageError   = make(chan error, 1)
-		messageHandled = make(chan struct{})
-	)
-
+	messageHandled := make(chan struct{})
 	consumer := pubsub.Consumer{
 		Subscriber: mc,
 		HandlerResolver: pubsub.Dispatcher(map[string]pubsub.MessageHandler{
 			eventName: pubsub.MessageHandlerFunc(handler),
 		}),
 		Unmarshaler: &jsonMarshaler,
-		OnReceive: func(message pubsub.ReceivedMessage, err error) {
-			if err != nil {
-				messageError <- err
-			}
+		OnReceive: func(message pubsub.ReceivedMessage, err error) error {
+			return err
 		},
-		OnUnregistered: func(message pubsub.ReceivedMessage) {
-			messageError <- fmt.Errorf("unregistered message: %+v", message)
+		OnUnregistered: func(message pubsub.ReceivedMessage) error {
+			return fmt.Errorf("unregistered message: %+v", message)
 		},
-		OnUnmarshal: func(message pubsub.ReceivedMessage, err error) {
-			if err != nil {
-				messageError <- err
-			}
+		OnUnmarshal: func(message pubsub.ReceivedMessage, err error) error {
+			return err
 		},
-		OnHandler: func(message pubsub.ReceivedMessage, err error) {
-			if err != nil {
-				messageError <- err
-			}
+		OnHandler: func(message pubsub.ReceivedMessage, err error) error {
+			return err
 		},
-		OnAck: func(message pubsub.ReceivedMessage, err error) {
+		OnAck: func(message pubsub.ReceivedMessage, err error) error {
 			if err != nil {
-				messageError <- err
+				return err
 			}
 			// all good!
 			close(messageHandled)
+			return nil
 		},
 	}
 
-	if err := consumer.Start(); err != nil {
+	if err := consumer.Subscribe(); err != nil {
 		t.Fatal("failed to start consumer", err)
 	}
 	t.Cleanup(func() {
@@ -206,17 +197,19 @@ func TestPubSubIntegration(t *testing.T) {
 		}
 	})
 
-	consumerStopped := make(chan struct{})
+	consumerStopped := make(chan error)
 	go func() {
-		consumer.Consume(ctx)
+		consumerStopped <- consumer.Consume(ctx)
 		close(consumerStopped)
 	}()
 
 	select {
 	case <-ctx.Done():
 		t.Error("context timeout waiting for handling the message")
-	case err := <-messageError:
-		t.Error("consumer error", err)
+	case err := <-consumerStopped:
+		if err != nil {
+			t.Fatal("consumer stopped with error!", err)
+		}
 	case <-messageHandled:
 	}
 
@@ -225,7 +218,10 @@ func TestPubSubIntegration(t *testing.T) {
 	select {
 	case <-time.NewTimer(time.Second).C:
 		t.Fatal("timeout waiting for a clean stop!")
-	case <-consumerStopped:
+	case err := <-consumerStopped:
+		if err != nil {
+			t.Fatal("consumer stopped with error!", err)
+		}
 	}
 }
 

@@ -8,8 +8,8 @@ import (
 
 // Subscriber consumes messages from a topic.
 type Subscriber interface {
-	// Start consuming the messages
-	Start() error
+	// Subscribe to the topic and start feeding messages.
+	Subscribe() error
 
 	// Next returns the next message in the topic.
 	// It should block until the next message is ready
@@ -69,31 +69,47 @@ type Unmarshaler interface {
 	Unmarshal(message ReceivedMessage) (*Message, error)
 }
 
-// Consumer acts like a normal consumer but routes
-// the messages to different handlers based on the
-// received message name.
+// Consumer consumes messages from a single subscriber.
 type Consumer struct {
-	// Message consumer
+	// Message subscriber
 	Subscriber
+
 	// Message handlers
 	HandlerResolver HandlerResolver
-	// Message handlers
+
+	// Message unmarshaler
 	Unmarshaler Unmarshaler
+
 	// Optional callback invoked when the consumer
 	// reports an error.
-	OnReceive func(message ReceivedMessage, err error)
+	//
+	// Return nil to stop the consumer with an error
+	OnReceive func(message ReceivedMessage, err error) error
+
 	// Optional callback invoked when the consumer
 	// the message has no handler associated
-	OnUnregistered func(message ReceivedMessage)
+	//
+	// Return nil to stop the consumer with an error
+	OnUnregistered func(message ReceivedMessage) error
+
 	// Optional callback invoked when the received message
 	// cannot be unmarshaled into a message.
-	OnUnmarshal func(message ReceivedMessage, err error)
+	//
+	// Return nil to stop the consumer with an error
+	OnUnmarshal func(message ReceivedMessage, err error) error
+
 	// OnHandlerError callback invoked when the handler
 	// returns an error.
-	OnHandler func(message ReceivedMessage, err error)
+	//
+	// Return nil to stop the consumer with an error
+	OnHandler func(message ReceivedMessage, err error) error
+
 	// Optional callback invoked when the handled
 	// message cannot be acknowledged
-	OnAck func(message ReceivedMessage, err error)
+	//
+	// Return nil to stop the consumer with an error
+	OnAck func(message ReceivedMessage, err error) error
+
 	// Disables automatic acknowledgement of the messages
 	// The handler will be responsible for it.
 	DisableAutoAck bool
@@ -107,14 +123,16 @@ type Consumer struct {
 // from the consumer to react to them.
 //
 // To stop the dispatcher, terminate the context.
-func (c *Consumer) Consume(ctx context.Context) {
+func (c *Consumer) Consume(ctx context.Context) error {
 	for {
 		msg, err := c.Next(ctx)
 		if errors.Is(err, context.Canceled) {
-			return
+			return nil
 		}
 		if f := c.OnReceive; f != nil {
-			f(msg, err)
+			if err := f(msg, err); err != nil {
+				return err
+			}
 		}
 		if err != nil {
 			continue
@@ -123,14 +141,18 @@ func (c *Consumer) Consume(ctx context.Context) {
 		h, ok := c.HandlerResolver.Resolve(msg)
 		if !ok {
 			if f := c.OnUnregistered; f != nil {
-				f(msg)
+				if err := f(msg); err != nil {
+					return err
+				}
 			}
 			continue
 		}
 
 		message, err := c.Unmarshaler.Unmarshal(msg)
 		if f := c.OnUnmarshal; f != nil {
-			f(msg, err)
+			if err := f(msg, err); err != nil {
+				return err
+			}
 		}
 		if err != nil {
 			continue
@@ -138,7 +160,9 @@ func (c *Consumer) Consume(ctx context.Context) {
 
 		err = h.HandleMessage(ctx, message)
 		if f := c.OnHandler; f != nil {
-			f(msg, err)
+			if err := f(msg, err); err != nil {
+				return err
+			}
 		}
 		if err != nil {
 			continue
@@ -149,7 +173,9 @@ func (c *Consumer) Consume(ctx context.Context) {
 		}
 		err = msg.Ack(ctx)
 		if f := c.OnAck; f != nil {
-			f(msg, err)
+			if err := f(msg, err); err != nil {
+				return err
+			}
 		}
 	}
 }

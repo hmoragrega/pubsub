@@ -57,7 +57,7 @@ func NewConsumer(consumer pulsar.Consumer, queueURL string, opts ...ConsumerOpti
 	return c
 }
 
-func (c *Consumer) Start() (err error) {
+func (c *Consumer) Subscribe() (err error) {
 	return c.pool.Start(workers.JobFunc(c.consume))
 }
 
