@@ -5,8 +5,12 @@ timeout=20
 
 while :
 do
-  	status=$(curl http://${DOCKER_IP}:4566/health 2>/dev/null)
-    if [ "${status}" == '{"services": {"sqs": "running", "sns": "running"}}' ]; then
+  	# Local stack
+  	# status=$(curl http://${DOCKER_IP}:4566/health 2>/dev/null)
+    # if [ "${status}" == '{"services": {"sqs": "running", "sns": "running"}}' ]; then
+
+    status=$(curl http://${DOCKER_IP}:4100/health 2>/dev/null)
+    if [ "${status}" == 'OK' ]; then
       printf "\nSQS & SNS ready"
       break;
     fi;

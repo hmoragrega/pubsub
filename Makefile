@@ -1,5 +1,6 @@
 
-export DOCKER_IP ?= 127.0.0.1
+export DOCKER_IP           ?= 127.0.0.1
+export LOCALSTACK_ENDPOINT ?= $(DOCKER_IP):4100 # goaws
 
 COVERAGE_FILE  = coverage.out
 COVERAGE_FILES = coverage/*.cov
@@ -9,7 +10,7 @@ up:
 	@mkdir -p .data/pulsar
 	@docker-compose up -d
 	@./scripts/wait-for-sqs.sh
-	@./scripts/wait-for-pulsar.sh
+# @./scripts/wait-for-pulsar.sh
 
 .PHONY: test
 test: up
