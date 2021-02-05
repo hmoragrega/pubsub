@@ -17,8 +17,9 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sns"
 	"github.com/aws/aws-sdk-go/service/sqs"
-	"github.com/hmoragrega/pubsub"
 	"github.com/hmoragrega/workers"
+
+	"github.com/hmoragrega/pubsub"
 )
 
 var (

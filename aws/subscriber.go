@@ -7,8 +7,9 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/sqs"
-	"github.com/hmoragrega/pubsub"
 	"github.com/hmoragrega/workers"
+
+	"github.com/hmoragrega/pubsub"
 )
 
 var (

@@ -11,6 +11,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/service/sns"
 	"github.com/aws/aws-sdk-go/service/sqs"
+
 	"github.com/hmoragrega/pubsub"
 )
 

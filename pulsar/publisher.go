@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/apache/pulsar-client-go/pulsar"
+
 	"github.com/hmoragrega/pubsub"
 )
 

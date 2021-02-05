@@ -9,9 +9,10 @@ import (
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar"
-	"github.com/hmoragrega/pubsub"
 	"github.com/hmoragrega/workers"
 	"github.com/hmoragrega/workers/middleware"
+
+	"github.com/hmoragrega/pubsub"
 )
 
 func foo() {
