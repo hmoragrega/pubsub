@@ -63,7 +63,7 @@ func TestInbox(t *testing.T) {
 	jsonMarshaler.Register(subtractRequestEventName, &subtractRequest{})
 	jsonMarshaler.Register(subtractResponseEventName, &subtractResponse{})
 
-	inbox := &pubsub.Inbox{
+	inbox := &pubsub.Letterbox{
 		Publisher: publisher,
 		Topic:     instanceTopicARN,
 	}

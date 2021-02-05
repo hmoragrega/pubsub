@@ -33,7 +33,7 @@ type Response struct {
 	Miss bool
 }
 
-type Inbox struct {
+type Letterbox struct {
 	// OnResponse is an optional callback that will be triggered
 	// when a response is received in this inbox.
 	OnResponse func(response *Response)
@@ -47,10 +47,10 @@ type Inbox struct {
 	mx       sync.RWMutex
 }
 
-// SendWithTimeout sends the request and waits until:
+// Request sends the request and waits until:
 // - the response is available.
 // - the given context is done.
-func (x *Inbox) Request(ctx context.Context, topic string, request Message) (*Message, error) {
+func (x *Letterbox) Request(ctx context.Context, topic string, request Message) (*Message, error) {
 	var id []byte
 	if len(request.ID) > 0 {
 		id = request.ID
@@ -86,7 +86,7 @@ func (x *Inbox) Request(ctx context.Context, topic string, request Message) (*Me
 }
 
 // Response sends a response to a request.
-func (x *Inbox) Response(ctx context.Context, request, response *Message) error {
+func (x *Letterbox) Response(ctx context.Context, request, response *Message) error {
 	topic := request.GetAttribute(responseTopicAttribute)
 	if topic == "" {
 		return fmt.Errorf("missing response topic in request")
@@ -108,7 +108,7 @@ func (x *Inbox) Response(ctx context.Context, request, response *Message) error 
 }
 
 // HandleMessage is the message handler for the responses
-func (x *Inbox) HandleMessage(_ context.Context, response *Message) error {
+func (x *Letterbox) HandleMessage(_ context.Context, response *Message) error {
 	requestID := response.GetAttribute(requestIDAttribute)
 	if requestID == "" {
 		return fmt.Errorf("missing request ID")
@@ -141,7 +141,7 @@ func (x *Inbox) HandleMessage(_ context.Context, response *Message) error {
 	return nil
 }
 
-func (x *Inbox) pop(id string) (requestAddress, bool) {
+func (x *Letterbox) pop(id string) (requestAddress, bool) {
 	x.mx.Lock()
 	defer x.mx.Unlock()
 	if x.requests == nil {
@@ -163,7 +163,7 @@ type requestAddress struct {
 
 // waitFor creates a channel to receive the response
 // for a request. It fails if the request ID is not unique.
-func (x *Inbox) waitFor(id string, request *Message) (<-chan *Response, error) {
+func (x *Letterbox) waitFor(id string, request *Message) (<-chan *Response, error) {
 	x.mx.Lock()
 	defer x.mx.Unlock()
 	if x.requests == nil {
@@ -184,7 +184,7 @@ func (x *Inbox) waitFor(id string, request *Message) (<-chan *Response, error) {
 	return c, nil
 }
 
-func (x *Inbox) delete(id string) {
+func (x *Letterbox) delete(id string) {
 	x.mx.Lock()
 	delete(x.requests, id)
 	x.mx.Unlock()

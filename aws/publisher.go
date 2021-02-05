@@ -39,7 +39,6 @@ func NewPublisher(svc *sns.SNS, topicARNs map[string]string) *Publisher {
 func (p *Publisher) Publish(ctx context.Context, topic string, env pubsub.Envelope) error {
 	var topicARN string
 
-	// inbox responses will send directly to the topic ARN
 	switch pos := strings.Index(topic, "arn:aws:sns"); pos {
 	case 0:
 		topicARN = topic
