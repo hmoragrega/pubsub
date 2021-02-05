@@ -19,7 +19,7 @@ type message struct {
 	body       []byte
 	attributes map[string]string
 
-	subscriber       *Consumer
+	subscriber       *Subscriber
 	sqsMessageID     *string
 	sqsReceiptHandle *string
 }

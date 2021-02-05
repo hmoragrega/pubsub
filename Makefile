@@ -1,6 +1,6 @@
 
-export DOCKER_IP           ?= 127.0.0.1
-export LOCALSTACK_ENDPOINT ?= $(DOCKER_IP):4100 # goaws
+export DOCKER_IP    ?= 127.0.0.1
+export AWS_ENDPOINT ?= $(DOCKER_IP):4100
 
 COVERAGE_FILE  = coverage.out
 COVERAGE_FILES = coverage/*.cov

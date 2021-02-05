@@ -33,12 +33,12 @@ func TestInbox(t *testing.T) {
 	defer cancel()
 
 	var (
-		instanceTopic       = "inbox-test-instance-topic"
-		mathSvcTopic        = "inbox-test-math-svc-topic"
+		instanceTopic       = "letterbox-test-instance-topic"
+		mathSvcTopic        = "letterbox-test-math-svc-topic"
 		instanceTopicARN    = createTestTopic(ctx, t, instanceTopic)
 		mathServiceTopicARN = createTestTopic(ctx, t, mathSvcTopic)
-		instanceQueueURL    = createTestQueue(ctx, t, "inbox-test-instance-queue")
-		mathSvcQueueURL     = createTestQueue(ctx, t, "inbox-test-math-svc-queue")
+		instanceQueueURL    = createTestQueue(ctx, t, "letterbox-test-instance-queue")
+		mathSvcQueueURL     = createTestQueue(ctx, t, "letterbox-test-math-svc-queue")
 		_                   = subscribeTestTopic(ctx, t, instanceTopicARN, instanceQueueURL)
 		_                   = subscribeTestTopic(ctx, t, mathServiceTopicARN, mathSvcQueueURL)
 		jsonMarshaler       pubsub.JSONMarshaller
@@ -63,19 +63,19 @@ func TestInbox(t *testing.T) {
 	jsonMarshaler.Register(subtractRequestEventName, &subtractRequest{})
 	jsonMarshaler.Register(subtractResponseEventName, &subtractResponse{})
 
-	inbox := &pubsub.Letterbox{
+	letterbox := &pubsub.Letterbox{
 		Publisher: publisher,
 		Topic:     instanceTopicARN,
 	}
 
 	// math service can do some hard math.
-	mathSvcConsumer := &pubsub.Consumer{
-		MessageConsumer: NewConsumer(sqsTest, mathSvcQueueURL),
+	mathSvcSubscriber := &pubsub.Consumer{
+		Subscriber: NewSubscriber(sqsTest, mathSvcQueueURL),
 		HandlerResolver: pubsub.Dispatcher(map[string]pubsub.MessageHandler{
 			sumRequestEventName: pubsub.MessageHandlerFunc(func(ctx context.Context, request *pubsub.Message) error {
 				req := request.Data.(*sumRequest)
 				x := req.A + req.B
-				return inbox.Response(ctx, request, &pubsub.Message{
+				return letterbox.Response(ctx, request, &pubsub.Message{
 					Name: sumResponseEventName,
 					Data: &sumResponse{X: x},
 				})
@@ -83,7 +83,7 @@ func TestInbox(t *testing.T) {
 			subtractRequestEventName: pubsub.MessageHandlerFunc(func(ctx context.Context, request *pubsub.Message) error {
 				req := request.Data.(*subtractRequest)
 				x := req.A - req.B
-				return inbox.Response(ctx, request, &pubsub.Message{
+				return letterbox.Response(ctx, request, &pubsub.Message{
 					Name: subtractResponseEventName,
 					Data: &subtractResponse{X: x},
 				})
@@ -92,18 +92,18 @@ func TestInbox(t *testing.T) {
 		Unmarshaler: &jsonMarshaler,
 	}
 
-	// the inbox acts as message handler for the responses.
+	// the letterbox acts as message handler for the responses.
 	instanceConsumer := &pubsub.Consumer{
-		MessageConsumer: NewConsumer(sqsTest, instanceQueueURL),
+		Subscriber: NewSubscriber(sqsTest, instanceQueueURL),
 		HandlerResolver: pubsub.Dispatcher(map[string]pubsub.MessageHandler{
-			sumResponseEventName:      inbox,
-			subtractResponseEventName: inbox,
+			sumResponseEventName:      letterbox,
+			subtractResponseEventName: letterbox,
 		}),
 		Unmarshaler: &jsonMarshaler,
 	}
 
 	consumerGroup := pubsub.ConsumerGroup{Consumers: []*pubsub.Consumer{
-		mathSvcConsumer,
+		mathSvcSubscriber,
 		instanceConsumer,
 	}}
 	consumerGroup.MustStartAll(ctx)
@@ -120,7 +120,7 @@ func TestInbox(t *testing.T) {
 	}()
 
 	// do a sum
-	res, err := inbox.Request(ctx, mathSvcTopic, pubsub.Message{
+	res, err := letterbox.Request(ctx, mathSvcTopic, pubsub.Message{
 		Name: sumRequestEventName,
 		Data: &sumRequest{A: 9, B: 5},
 	})
@@ -132,7 +132,7 @@ func TestInbox(t *testing.T) {
 	}
 
 	// do a subtraction
-	res, err = inbox.Request(ctx, mathSvcTopic, pubsub.Message{
+	res, err = letterbox.Request(ctx, mathSvcTopic, pubsub.Message{
 		Name: subtractRequestEventName,
 		Data: &subtractRequest{A: 2, B: 8},
 	})

@@ -30,8 +30,8 @@ func TestMain(m *testing.M) {
 	sess, err := session.NewSessionWithOptions(session.Options{
 		Config: aws.Config{
 			Credentials: credentials.NewStaticCredentials("id", "secret", "token"),
-			Endpoint:    aws.String(getEnvOrDefault("LOCALSTACK_ENDPOINT", "localhost:4566")),
-			Region:      aws.String(getEnvOrDefault("LOCALSTACK_REGION", "us-east-1")),
+			Endpoint:    aws.String(getEnvOrDefault("AWS_ENDPOINT", "localhost:4566")),
+			Region:      aws.String(getEnvOrDefault("AWS_REGION", "us-east-1")),
 			DisableSSL:  aws.Bool(true),
 		},
 	})
@@ -47,7 +47,7 @@ func TestQueueConsumer_ConsumeError(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	c := NewConsumer(sqsTest, "bad-queue")
+	c := NewSubscriber(sqsTest, "bad-queue")
 	if err := c.Start(); err != nil {
 		t.Fatal("failed to start consumer", err)
 	}
@@ -67,7 +67,7 @@ func TestQueueConsumer_JobHonorContexts(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	c := NewConsumer(sqsTest, "foo")
+	c := NewSubscriber(sqsTest, "foo")
 	if err := c.Start(); err != nil {
 		t.Fatal("failed to start consumer", err)
 	}
@@ -128,7 +128,7 @@ func TestPubSubIntegration(t *testing.T) {
 		t.Fatal("cannot publish message", err)
 	}
 
-	mc := NewConsumer(
+	mc := NewSubscriber(
 		sqsTest,
 		queueURL,
 		WithPool(workers.Must(workers.NewWithConfig(workers.Config{
@@ -165,7 +165,7 @@ func TestPubSubIntegration(t *testing.T) {
 	)
 
 	consumer := pubsub.Consumer{
-		MessageConsumer: mc,
+		Subscriber: mc,
 		HandlerResolver: pubsub.Dispatcher(map[string]pubsub.MessageHandler{
 			eventName: pubsub.MessageHandlerFunc(handler),
 		}),

@@ -18,7 +18,7 @@ var (
 
 var _ pubsub.MessageConsumer = (*Consumer)(nil)
 
-// MessageConsumer for AWS SQS.
+// Subscriber for AWS SQS.
 type Consumer struct {
 	queueURL string
 	consumer pulsar.Consumer

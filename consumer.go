@@ -6,8 +6,8 @@ import (
 	"errors"
 )
 
-// MessageConsumer consumes messages from a topic.
-type MessageConsumer interface {
+// Subscriber consumes messages from a topic.
+type Subscriber interface {
 	// Start consuming the messages
 	Start() error
 
@@ -74,7 +74,7 @@ type Unmarshaler interface {
 // received message name.
 type Consumer struct {
 	// Message consumer
-	MessageConsumer
+	Subscriber
 	// Message handlers
 	HandlerResolver HandlerResolver
 	// Message handlers

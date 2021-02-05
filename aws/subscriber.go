@@ -19,19 +19,19 @@ var (
 	allAttributes             = []*string{aws.String("All")}
 )
 
-var _ pubsub.MessageConsumer = (*Consumer)(nil)
+var _ pubsub.Subscriber = (*Subscriber)(nil)
 
-// MessageConsumer for AWS SQS.
-type Consumer struct {
+// Subscriber for AWS SQS.
+type Subscriber struct {
 	queueURL string
 	sqs      *sqs.SQS
 	pool     pool
 	results  chan consumeResult
 }
 
-// ConsumerOption configuration option
+// SubscriberOption configuration option
 // for the consumer.
-type ConsumerOption func(*Consumer)
+type SubscriberOption func(*Subscriber)
 
 type pool interface {
 	Start(job workers.Job) error
@@ -39,14 +39,14 @@ type pool interface {
 }
 
 // WithPool allows to pass a custom pool.
-func WithPool(pool pool) ConsumerOption {
-	return func(c *Consumer) {
+func WithPool(pool pool) SubscriberOption {
+	return func(c *Subscriber) {
 		c.pool = pool
 	}
 }
 
-func NewConsumer(svc *sqs.SQS, queueURL string, opts ...ConsumerOption) *Consumer {
-	c := &Consumer{
+func NewSubscriber(svc *sqs.SQS, queueURL string, opts ...SubscriberOption) *Subscriber {
+	c := &Subscriber{
 		sqs:      svc,
 		queueURL: queueURL,
 		results:  make(chan consumeResult, maxNumberOfMessages),
@@ -60,17 +60,17 @@ func NewConsumer(svc *sqs.SQS, queueURL string, opts ...ConsumerOption) *Consume
 	return c
 }
 
-func (c *Consumer) Start() (err error) {
-	return c.pool.Start(workers.JobFunc(c.consume))
+func (s *Subscriber) Start() (err error) {
+	return s.pool.Start(workers.JobFunc(s.consume))
 }
 
 // Next consumes the next batch of messages in the queue and
 // puts them in the messages channel.
-func (c *Consumer) Next(ctx context.Context) (pubsub.ReceivedMessage, error) {
+func (s *Subscriber) Next(ctx context.Context) (pubsub.ReceivedMessage, error) {
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
-	case res, ok := <-c.results:
+	case res, ok := <-s.results:
 		if !ok {
 			return nil, ErrConsumerStopped
 		}
@@ -79,21 +79,21 @@ func (c *Consumer) Next(ctx context.Context) (pubsub.ReceivedMessage, error) {
 }
 
 // Stop stops consuming messages.
-func (c *Consumer) Stop(ctx context.Context) error {
-	err := c.pool.Close(ctx)
+func (s *Subscriber) Stop(ctx context.Context) error {
+	err := s.pool.Close(ctx)
 	if err != nil {
 		return err
 	}
 
-	close(c.results)
+	close(s.results)
 	return nil
 }
 
 // consumes the next batch of messages in
 // the queue and puts them in the messages channel.
-func (c *Consumer) consume(ctx context.Context) error {
-	out, err := c.sqs.ReceiveMessageWithContext(ctx, &sqs.ReceiveMessageInput{
-		QueueUrl:              &c.queueURL,
+func (s *Subscriber) consume(ctx context.Context) error {
+	out, err := s.sqs.ReceiveMessageWithContext(ctx, &sqs.ReceiveMessageInput{
+		QueueUrl:              &s.queueURL,
 		MaxNumberOfMessages:   &maxNumberOfMessages,
 		WaitTimeSeconds:       &waitTimeSeconds,
 		AttributeNames:        allAttributes,
@@ -105,21 +105,21 @@ func (c *Consumer) consume(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		c.results <- consumeResult{err: err}
+		s.results <- consumeResult{err: err}
 		return err
 	}
-	messages, err := c.wrapMessages(out.Messages)
+	messages, err := s.wrapMessages(out.Messages)
 	if err != nil {
-		c.results <- consumeResult{err: err}
+		s.results <- consumeResult{err: err}
 		return err
 	}
 	for _, message := range messages {
-		c.results <- consumeResult{message: message}
+		s.results <- consumeResult{message: message}
 	}
 	return nil
 }
 
-func (c *Consumer) wrapMessages(in []*sqs.Message) (out []pubsub.ReceivedMessage, err error) {
+func (s *Subscriber) wrapMessages(in []*sqs.Message) (out []pubsub.ReceivedMessage, err error) {
 	out = make([]pubsub.ReceivedMessage, len(in))
 	for i, m := range in {
 		var awsMsgID string
@@ -151,16 +151,16 @@ func (c *Consumer) wrapMessages(in []*sqs.Message) (out []pubsub.ReceivedMessage
 			attributes:       decodeAttributes(m.MessageAttributes),
 			sqsMessageID:     m.MessageId,
 			sqsReceiptHandle: m.ReceiptHandle,
-			subscriber:       c,
+			subscriber:       s,
 		}
 	}
 	return out, nil
 }
 
-func (c *Consumer) deleteMessage(ctx context.Context, msg *message) error {
-	_, err := c.sqs.DeleteMessageWithContext(ctx, &sqs.DeleteMessageInput{
+func (s *Subscriber) deleteMessage(ctx context.Context, msg *message) error {
+	_, err := s.sqs.DeleteMessageWithContext(ctx, &sqs.DeleteMessageInput{
 		ReceiptHandle: msg.sqsReceiptHandle,
-		QueueUrl:      &c.queueURL,
+		QueueUrl:      &s.queueURL,
 	})
 	if err != nil {
 		return fmt.Errorf("cannot delete messages: %v", err)

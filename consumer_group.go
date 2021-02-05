@@ -21,7 +21,7 @@ func (cg *ConsumerGroup) MustStartAll(ctx context.Context) {
 	if len(errs) == 0 {
 		return
 	}
-	_ = cg.Stop(ctx)
+	_ = cg.Stop(context.Background())
 	panic(fmt.Errorf("failed to start all consumers: %+v", errs))
 }
 
