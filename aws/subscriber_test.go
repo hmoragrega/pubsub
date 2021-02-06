@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"reflect"
 	"strconv"
 	"testing"
@@ -20,11 +19,6 @@ import (
 	"github.com/hmoragrega/workers"
 
 	"github.com/hmoragrega/pubsub"
-)
-
-var (
-	sqsTest *sqs.SQS
-	snsTest *sns.SNS
 )
 
 func TestMain(m *testing.M) {
@@ -44,11 +38,11 @@ func TestMain(m *testing.M) {
 	m.Run()
 }
 
-func TestQueueConsumer_ConsumeError(t *testing.T) {
+func TestSubscribe_NextError(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	c := NewSubscriber(sqsTest, "bad-queue")
+	c := &Subscriber{SQS: sqsTest, QueueURL: "bad queue"}
 	if err := c.Subscribe(); err != nil {
 		t.Fatal("failed to start consumer", err)
 	}
@@ -64,21 +58,21 @@ func TestQueueConsumer_ConsumeError(t *testing.T) {
 	}
 }
 
-func TestQueueConsumer_JobHonorContexts(t *testing.T) {
+func TestSubscribe_SubscribeContextCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	c := NewSubscriber(sqsTest, "foo")
-	if err := c.Subscribe(); err != nil {
+	s := &Subscriber{SQS: sqsTest, QueueURL: "foo"}
+	if err := s.Subscribe(); err != nil {
 		t.Fatal("failed to start consumer", err)
 	}
 	t.Cleanup(func() {
-		if err := c.Stop(context.Background()); err != nil {
+		if err := s.Stop(context.Background()); err != nil {
 			t.Fatal("failed to stop consumer", err)
 		}
 	})
 
-	_, err := c.Next(ctx)
+	_, err := s.Next(ctx)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatal("unexpected error result", err)
 	}
@@ -105,9 +99,9 @@ func TestPubSubIntegration(t *testing.T) {
 
 	// Create SNS publisher
 	publisher := pubsub.Publisher{
-		Publisher: NewPublisher(snsTest, map[string]string{
+		Publisher: &Publisher{SNS: snsTest, TopicARNs: map[string]string{
 			testTopic: topicARN,
-		}),
+		}},
 		Marshaler: &jsonMarshaler,
 	}
 
@@ -129,13 +123,13 @@ func TestPubSubIntegration(t *testing.T) {
 		t.Fatal("cannot publish message", err)
 	}
 
-	mc := NewSubscriber(
-		sqsTest,
-		queueURL,
-		WithPool(workers.Must(workers.NewWithConfig(workers.Config{
+	mc := &Subscriber{
+		SQS:      sqsTest,
+		QueueURL: queueURL,
+		WorkersConfig: workers.Config{
 			Min: 3,
-		}))),
-	)
+		},
+	}
 
 	handler := func(_ context.Context, message *pubsub.Message) error {
 		if len(message.ID) == 0 {
@@ -161,25 +155,19 @@ func TestPubSubIntegration(t *testing.T) {
 	}
 
 	messageHandled := make(chan struct{})
-	consumer := pubsub.Consumer{
-		Subscriber: mc,
-		HandlerResolver: pubsub.Dispatcher(map[string]pubsub.MessageHandler{
-			eventName: pubsub.MessageHandlerFunc(handler),
-		}),
+	router := pubsub.Router{
 		Unmarshaler: &jsonMarshaler,
-		OnReceive: func(message pubsub.ReceivedMessage, err error) error {
+		StopTimeout: time.Second,
+		OnReceive: func(_ context.Context, _ string, _ pubsub.ReceivedMessage, err error) error {
 			return err
 		},
-		OnUnregistered: func(message pubsub.ReceivedMessage) error {
-			return fmt.Errorf("unregistered message: %+v", message)
-		},
-		OnUnmarshal: func(message pubsub.ReceivedMessage, err error) error {
+		OnUnmarshal: func(_ context.Context, _ string, _ pubsub.ReceivedMessage, err error) error {
 			return err
 		},
-		OnHandler: func(message pubsub.ReceivedMessage, err error) error {
+		OnHandler: func(_ context.Context, _ string, _ pubsub.ReceivedMessage, err error) error {
 			return err
 		},
-		OnAck: func(message pubsub.ReceivedMessage, err error) error {
+		OnAck: func(_ context.Context, _ string, _ pubsub.ReceivedMessage, err error) error {
 			if err != nil {
 				return err
 			}
@@ -188,40 +176,24 @@ func TestPubSubIntegration(t *testing.T) {
 			return nil
 		},
 	}
-
-	if err := consumer.Subscribe(); err != nil {
-		t.Fatal("failed to start consumer", err)
+	err = router.RegisterHandler("topic", mc, pubsub.MessageHandlerFunc(handler))
+	if err != nil {
+		t.Fatal("cannot register handler", err)
 	}
-	t.Cleanup(func() {
-		if err := consumer.Stop(context.Background()); err != nil {
-			t.Fatal("failed to stop consumer", err)
-		}
-	})
 
-	consumerStopped := make(chan error)
+	routerResult := make(chan error)
 	go func() {
-		consumerStopped <- consumer.Consume(ctx)
-		close(consumerStopped)
+		routerResult <- router.Run(ctx)
 	}()
 
 	select {
 	case <-ctx.Done():
 		t.Error("context timeout waiting for handling the message")
-	case err := <-consumerStopped:
-		if err != nil {
-			t.Fatal("consumer stopped with error!", err)
-		}
 	case <-messageHandled:
-	}
-
-	cancel()
-
-	select {
-	case <-time.NewTimer(time.Second).C:
-		t.Fatal("timeout waiting for a clean stop!")
-	case err := <-consumerStopped:
+		cancel()
+		err = <-routerResult
 		if err != nil {
-			t.Fatal("consumer stopped with error!", err)
+			t.Fatal("router stopped with error!", err)
 		}
 	}
 }
@@ -258,12 +230,4 @@ func createTestTopic(ctx context.Context, t *testing.T, topicName string) string
 		}
 	})
 	return queueURL
-}
-
-func getEnvOrDefault(key string, d string) string {
-	s := os.Getenv(key)
-	if s == "" {
-		return d
-	}
-	return s
 }

@@ -29,7 +29,7 @@ type subtractResponse struct {
 }
 
 func TestInbox(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 99999*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	var (
@@ -45,9 +45,9 @@ func TestInbox(t *testing.T) {
 	)
 
 	publisher := &pubsub.Publisher{
-		Publisher: NewPublisher(snsTest, map[string]string{
+		Publisher: &Publisher{SNS: snsTest, TopicARNs: map[string]string{
 			mathSvcTopic: mathServiceTopicARN,
-		}),
+		}},
 		Marshaler: &jsonMarshaler,
 	}
 
@@ -72,9 +72,9 @@ func TestInbox(t *testing.T) {
 		Unmarshaler: &jsonMarshaler,
 	}
 
-	err := router.RegisterSubscriber(
+	err := router.RegisterHandler(
 		instanceTopic,
-		NewSubscriber(sqsTest, instanceQueueURL),
+		&Subscriber{SQS: sqsTest, QueueURL: instanceQueueURL},
 		pubsub.Dispatcher(map[string]pubsub.MessageHandler{
 			sumResponseEventName:      letterbox,
 			subtractResponseEventName: letterbox,
@@ -84,26 +84,26 @@ func TestInbox(t *testing.T) {
 		t.Fatal("cannot register instance subscriber", err)
 	}
 
-	err = router.RegisterSubscriber(
+	err = router.RegisterHandler(
 		mathSvcTopic,
-		NewSubscriber(sqsTest, mathSvcQueueURL),
+		&Subscriber{SQS: sqsTest, QueueURL: mathSvcQueueURL},
 		pubsub.Dispatcher(map[string]pubsub.MessageHandler{
-			sumRequestEventName: pubsub.MessageHandlerFunc(func(ctx context.Context, request *pubsub.Message) error {
-				req := request.Data.(*sumRequest)
-				x := req.A + req.B
-				return letterbox.Response(ctx, request, &pubsub.Message{
-					Name: sumResponseEventName,
-					Data: &sumResponse{X: x},
-				})
-			}),
-			subtractRequestEventName: pubsub.MessageHandlerFunc(func(ctx context.Context, request *pubsub.Message) error {
-				req := request.Data.(*subtractRequest)
-				x := req.A - req.B
-				return letterbox.Response(ctx, request, &pubsub.Message{
-					Name: subtractResponseEventName,
-					Data: &subtractResponse{X: x},
-				})
-			}),
+			sumRequestEventName: letterbox.ServerHandler(
+				func(ctx context.Context, request *pubsub.Message) (*pubsub.Message, error) {
+					req := request.Data.(*sumRequest)
+					return &pubsub.Message{
+						Name: sumResponseEventName,
+						Data: &sumResponse{X: req.A + req.B},
+					}, nil
+				}),
+			subtractRequestEventName: letterbox.ServerHandler(
+				func(ctx context.Context, request *pubsub.Message) (*pubsub.Message, error) {
+					req := request.Data.(*subtractRequest)
+					return &pubsub.Message{
+						Name: subtractResponseEventName,
+						Data: &subtractResponse{X: req.A - req.B},
+					}, nil
+				}),
 		}),
 	)
 	if err != nil {

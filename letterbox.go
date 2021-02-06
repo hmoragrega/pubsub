@@ -85,6 +85,17 @@ func (x *Letterbox) Request(ctx context.Context, topic string, request Message) 
 	}
 }
 
+// ServerHandler wrap the server handler to accept the responses
+func (x *Letterbox) ServerHandler(handler func(context.Context, *Message) (*Message, error)) MessageHandlerFunc {
+	return func(ctx context.Context, request *Message) error {
+		response, err := handler(ctx, request)
+		if err != nil {
+			return err
+		}
+		return x.Response(ctx, request, response)
+	}
+}
+
 // Response sends a response to a request.
 func (x *Letterbox) Response(ctx context.Context, request, response *Message) error {
 	topic := request.GetAttribute(responseTopicAttribute)

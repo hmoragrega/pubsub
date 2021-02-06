@@ -49,5 +49,5 @@ func (m *message) Attributes() map[string]string {
 }
 
 func (m *message) Ack(ctx context.Context) error {
-	return m.subscriber.deleteMessage(ctx, m)
+	return m.subscriber.ack(ctx, m)
 }

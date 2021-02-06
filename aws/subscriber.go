@@ -4,16 +4,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/sqs"
-	"github.com/hmoragrega/workers"
-
 	"github.com/hmoragrega/pubsub"
+	"github.com/hmoragrega/workers"
 )
 
 var (
-	ErrConsumerStopped = errors.New("consumer stopped")
+	ErrSubscriberStopped = errors.New("subscriber stopped")
+	ErrAcknowledgement   = errors.New("cannot ack message")
 
 	maxNumberOfMessages int64 = 10
 	waitTimeSeconds     int64 = 20
@@ -22,79 +25,134 @@ var (
 
 var _ pubsub.Subscriber = (*Subscriber)(nil)
 
+type AckConfig struct {
+	// Timeout for the acknowledgements request.
+	// No timeout by default.
+	Timeout time.Duration
+
+	// Async will ack on the message asynchronously returning
+	// immediately with success.
+	//
+	// Errors will be reported in the next consuming cycle.
+	//
+	// When the subscriber closes, it will wait until all
+	// acknowledge operations finish, reporting any errors.
+	Async bool
+
+	// Batch will indicate to buffer acknowledgements
+	// until a certain amount of messages are pending.
+	//
+	// Batching acknowledgements creates
+	//
+	// Calling Ack on the message will return success, and
+	// the errors will be reported when consuming new messages
+	//
+	// When the subscriber closes, it will wait until all
+	// acknowledge operation finish.
+	BatchSize int
+
+	// FlushEvery indicates how often the messages should be
+	// acknowledged even if the batch is not full yet.
+	//
+	// This value has no effect if Batch is not true.
+	FlushEvery time.Duration
+}
+
 // Subscriber for AWS SQS.
 type Subscriber struct {
-	queueURL string
-	sqs      *sqs.SQS
-	pool     pool
-	results  chan consumeResult
+	// SQS Service. If not given the default client will be used.
+	SQS *sqs.SQS
+
+	// QueueURL for the SQS queue.
+	QueueURL string
+
+	// @TODO
+	// AutoSubscribe AutoSubscribe
+
+	// AckConfig configuration the acknowledgements behaviour
+	AckConfig AckConfig
+
+	// WorkersConfig workers pool configuration.
+	WorkersConfig workers.Config
+
+	pool        *workers.Pool
+	results     chan consumeResult
+	ackStrategy ackStrategy
+	stopped     atomicBool
+	once        sync.Once
 }
 
-// SubscriberOption configuration option
-// for the consumer.
-type SubscriberOption func(*Subscriber)
-
-type pool interface {
-	Start(job workers.Job) error
-	Close(ctx context.Context) error
-}
-
-// WithPool allows to pass a custom pool.
-func WithPool(pool pool) SubscriberOption {
-	return func(c *Subscriber) {
-		c.pool = pool
+func (s *Subscriber) Subscribe() error {
+	if err := s.init(); err != nil {
+		return err
 	}
-}
+	if err := s.pool.Start(workers.JobFunc(s.consume)); err != nil {
+		return err
+	}
 
-func NewSubscriber(svc *sqs.SQS, queueURL string, opts ...SubscriberOption) *Subscriber {
-	c := &Subscriber{
-		sqs:      svc,
-		queueURL: queueURL,
-		results:  make(chan consumeResult, maxNumberOfMessages),
-	}
-	for _, opt := range opts {
-		opt(c)
-	}
-	if c.pool == nil {
-		c.pool = workers.New()
-	}
-	return c
-}
-
-func (s *Subscriber) Subscribe() (err error) {
-	return s.pool.Start(workers.JobFunc(s.consume))
+	return s.ackStrategy.Start()
 }
 
 // Next consumes the next batch of messages in the queue and
 // puts them in the messages channel.
 func (s *Subscriber) Next(ctx context.Context) (pubsub.ReceivedMessage, error) {
+	if s.stopped.isTrue() {
+		return nil, fmt.Errorf("%w", ErrSubscriberStopped)
+	}
+
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case res, ok := <-s.results:
 		if !ok {
-			return nil, ErrConsumerStopped
+			return nil, ErrSubscriberStopped
 		}
 		return res.message, res.err
 	}
 }
 
 // Stop stops consuming messages.
-func (s *Subscriber) Stop(ctx context.Context) error {
-	err := s.pool.Close(ctx)
-	if err != nil {
+func (s *Subscriber) Stop(ctx context.Context) (err error) {
+	s.stopped.setTrue()
+
+	if err = s.pool.Close(ctx); err != nil {
 		return err
 	}
 
 	close(s.results)
-	return nil
+
+	return s.ackStrategy.Close(ctx)
+}
+
+func (s *Subscriber) init() (err error) {
+	s.once.Do(func() {
+		if s.SQS == nil {
+			if s.SQS, err = NewDefaultSQS(); err != nil {
+				return
+			}
+		}
+		if s.QueueURL == "" {
+			err = fmt.Errorf("QueueURL cannot be empty")
+			return
+		}
+		s.results = make(chan consumeResult, maxNumberOfMessages)
+		s.pool = workers.New()
+
+		if s.AckConfig.Async || s.AckConfig.BatchSize > 0 {
+			s.ackStrategy = newAsyncAck(s.SQS, s.QueueURL, s.AckConfig, s.WorkersConfig)
+		} else {
+			s.ackStrategy = newSyncAck(s.SQS, s.QueueURL)
+		}
+	})
+
+	return err
 }
 
 // consumes the next batch of messages in
 // the queue and puts them in the messages channel.
 func (s *Subscriber) consume(ctx context.Context) error {
-	out, err := s.sqs.ReceiveMessageWithContext(ctx, &sqs.ReceiveMessageInput{
-		QueueUrl:              &s.queueURL,
+	out, err := s.SQS.ReceiveMessageWithContext(ctx, &sqs.ReceiveMessageInput{
+		QueueUrl:              &s.QueueURL,
 		MaxNumberOfMessages:   &maxNumberOfMessages,
 		WaitTimeSeconds:       &waitTimeSeconds,
 		AttributeNames:        allAttributes,
@@ -158,23 +216,30 @@ func (s *Subscriber) wrapMessages(in []*sqs.Message) (out []pubsub.ReceivedMessa
 	return out, nil
 }
 
-func (s *Subscriber) deleteMessage(ctx context.Context, msg *message) error {
-	_, err := s.sqs.DeleteMessageWithContext(ctx, &sqs.DeleteMessageInput{
-		ReceiptHandle: msg.sqsReceiptHandle,
-		QueueUrl:      &s.queueURL,
-	})
-	if err != nil {
-		return fmt.Errorf("cannot delete messages: %v", err)
+func (s *Subscriber) ack(_ context.Context, msg *message) error {
+	if s.stopped.isTrue() {
+		return fmt.Errorf("%w", ErrSubscriberStopped)
 	}
-	return nil
+
+	return s.ackStrategy.Ack(context.Background(), msg)
 }
 
-// ConsumeResult is the result of consuming
-// messages from the queue.
-//
-// It contains a list of consumed message
-// or an error if the operation failed.
+// ConsumeResult is the result of consuming messages from the queue.
 type consumeResult struct {
 	message pubsub.ReceivedMessage
 	err     error
+}
+
+type atomicBool int32
+
+func (b *atomicBool) isTrue() bool {
+	return atomic.LoadInt32((*int32)(b)) != 0
+}
+
+func (b *atomicBool) setTrue() {
+	atomic.StoreInt32((*int32)(b), 1)
+}
+
+func (b *atomicBool) setFalse() {
+	atomic.StoreInt32((*int32)(b), 0)
 }

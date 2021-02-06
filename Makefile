@@ -12,6 +12,10 @@ up:
 	@./scripts/wait-for-sqs.sh
 # @./scripts/wait-for-pulsar.sh
 
+.PHONY: down
+down:
+	@docker-compose down
+
 .PHONY: test
 test: up
 	@go test -race -v -tags=integration -coverpkg=./... -coverprofile=coverage/pubsub.cov ./...

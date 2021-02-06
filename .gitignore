@@ -5,3 +5,5 @@ coverage.out
 !/coverage/.gitkeep
 
 .data
+
+aws.pem

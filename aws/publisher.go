@@ -26,39 +26,32 @@ const (
 )
 
 type Publisher struct {
-	sns       *sns.SNS
-	topicARNs map[string]string
-}
-
-func NewPublisher(svc *sns.SNS, topicARNs map[string]string) *Publisher {
-	return &Publisher{
-		sns:       svc,
-		topicARNs: topicARNs,
-	}
+	SNS       *sns.SNS
+	TopicARNs map[string]string
 }
 
 func (p *Publisher) Publish(ctx context.Context, topic string, env pubsub.Envelope) error {
 	var topicARN string
 
-	switch pos := strings.Index(topic, "arn:aws:sns"); pos {
+	switch pos := strings.Index(strings.ToLower(topic), "arn:aws:sns"); pos {
 	case 0:
 		topicARN = topic
 	default:
-		arn, ok := p.topicARNs[topic]
+		arn, ok := p.TopicARNs[topic]
 		if !ok {
 			return fmt.Errorf("%w: %s", ErrTopicNotFound, topic)
 		}
 		topicARN = arn
 	}
 
-	// every message needs to have a message group in sns
+	// every message needs to have a message group in SNS
 	key := env.Key
 	if key == "" {
 		key = "void"
 	}
 
 	base64ID := base64.StdEncoding.EncodeToString(env.ID)
-	_, err := p.sns.PublishWithContext(ctx, &sns.PublishInput{
+	_, err := p.SNS.PublishWithContext(ctx, &sns.PublishInput{
 		MessageDeduplicationId: &base64ID,
 		Message:                stringPtr(env.Body),
 		MessageAttributes:      encodeAttributes(&env),

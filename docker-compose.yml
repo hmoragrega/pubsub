@@ -1,14 +1,14 @@
 version: "3"
 
 services:
-#  aws:
-#    image: localstack/localstack:latest
-#    ports:
-#      - 4566:4566
-#    environment:
-#      - DEBUG=1
-#      - SERVICES=sqs,sns
-#      - START_WEB=0
+# localstack:
+#   image: localstack/localstack:latest
+#   ports:
+#     - 4566:4566
+#   environment:
+#     #- DEBUG=1
+#     - SERVICES=sqs,sns
+#     - START_WEB=0
 
   aws:
     image: kukushkin/goaws:latest
