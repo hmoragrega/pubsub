@@ -92,7 +92,7 @@ func Bench() {
 	counter := NewCounter()
 
 	var wg sync.WaitGroup
-	wg.Add(messagesCount)
+	wg.Add(1)
 
 	router := pubsub.Router{
 		Unmarshaler:    unmarshaler,
@@ -113,7 +113,9 @@ func Bench() {
 		OnAck: func(_ context.Context, _ string, _ pubsub.ReceivedMessage, _ error) error {
 			//fmt.Println("on ack", topic, msg.ID(), err)
 			counter.Add(1)
-			wg.Done()
+			if counter.Count() == messagesCount {
+				wg.Done()
+			}
 			return nil
 		},
 	}
@@ -303,7 +305,7 @@ func (c *Counter) Add(n uint64) {
 }
 
 func (c *Counter) Count() uint64 {
-	return c.count
+	return atomic.LoadUint64(&c.count)
 }
 
 func (c *Counter) MeanPerSecond() float64 {
