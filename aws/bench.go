@@ -29,15 +29,15 @@ var snsTest *sns.SNS
 func Bench() {
 	var sess *session.Session
 	var err error
-	if os.Getenv("AWS_REAL") == "true" {
-		sess, err = session.NewSession()
+	if os.Getenv("AWS") == "true" {
+		sess, err = session.NewSession(&aws.Config{Region: aws.String("eu-west-3")})
 	} else {
 		sess, err = session.NewSessionWithOptions(session.Options{
 			Config: aws.Config{
 				Credentials: credentials.NewStaticCredentials("id", "secret", "token"),
 				Endpoint:    aws.String(getEnvOrDefault("AWS_ENDPOINT", "localhost:4100")), //goaws
 				//Endpoint:    aws.String(getEnvOrDefault("AWS_ENDPOINT", "localhost:4566")), // localstack
-				Region:     aws.String(getEnvOrDefault("AWS_REGION", "us-east-1")),
+				Region:     aws.String(getEnvOrDefault("AWS_REGION", "eu-west-3")),
 				DisableSSL: aws.Bool(true),
 				//Logger:     aws.NewDefaultLogger(),
 				//LogLevel:   aws.LogLevel(aws.LogDebug | aws.LogDebugWithHTTPBody),
@@ -54,8 +54,8 @@ func Bench() {
 
 	topic := "benchmark"
 	topicARN := CreateTestTopic(ctx, topic)
-	queueURL := CreateTestQueue(ctx, "my-queue")
-	SubscribeTestTopic(ctx, topicARN, queueURL)
+	queueURL, queueARN := CreateTestQueue(ctx, "my-queue")
+	SubscribeTestTopic(ctx, topicARN, queueARN)
 
 	unmarshaler := &noOpMarshaler{}
 	publisher := &pubsub.Publisher{
@@ -245,17 +245,17 @@ func publishMessages(publisher *pubsub.Publisher, topic string, messageSize int)
 	return nil
 }
 
-func CreateTestQueue(ctx context.Context, queueName string) string {
+func CreateTestQueue(ctx context.Context, queueName string) (string, string) {
 	queueURL := MustCreateResource(CreateQueue(ctx, sqsTest, queueName))
 	_, err := sqsTest.PurgeQueueWithContext(ctx, &sqs.PurgeQueueInput{QueueUrl: &queueURL})
 	if err != nil {
 		panic("cannot purge queue")
 	}
-	return queueURL
+	return queueURL, MustCreateResource(GetQueueARN(ctx, sqsTest, queueURL))
 }
 
-func SubscribeTestTopic(ctx context.Context, topicARN, queueURL string) string {
-	subscriptionARN := MustCreateResource(Subscribe(ctx, snsTest, topicARN, queueURL))
+func SubscribeTestTopic(ctx context.Context, topicARN, queueARN string) string {
+	subscriptionARN := MustCreateResource(Subscribe(ctx, snsTest, topicARN, queueARN))
 	return subscriptionARN
 }
 
