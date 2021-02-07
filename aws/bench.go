@@ -31,9 +31,9 @@ func Bench() {
 	var err error
 	if os.Getenv("AWS") == "true" {
 		sess, err = session.NewSession(&aws.Config{
-			Region:   aws.String("eu-west-3"),
-			Logger:   aws.NewDefaultLogger(),
-			LogLevel: aws.LogLevel(aws.LogDebug | aws.LogDebugWithHTTPBody),
+			Region: aws.String("eu-west-3"),
+			//Logger:   aws.NewDefaultLogger(),
+			//LogLevel: aws.LogLevel(aws.LogDebug | aws.LogDebugWithHTTPBody),
 		})
 	} else {
 		sess, err = session.NewSessionWithOptions(session.Options{
@@ -85,7 +85,7 @@ func Bench() {
 			FlushEvery: 0,
 		},
 		WorkersConfig: workers.Config{
-			Initial: 1,
+			Initial: 8,
 		},
 	}
 
@@ -253,10 +253,11 @@ func publishMessages(publisher *pubsub.Publisher, topic string, messageSize int)
 
 func CreateTestQueue(ctx context.Context, queueName string) (string, string) {
 	queueURL := MustCreateResource(CreateQueue(ctx, sqsTest, queueName))
-	_, err := sqsTest.PurgeQueueWithContext(ctx, &sqs.PurgeQueueInput{QueueUrl: &queueURL})
-	if err != nil {
-		panic("cannot purge queue")
-	}
+	/*	_, err := sqsTest.PurgeQueueWithContext(ctx, &sqs.PurgeQueueInput{QueueUrl: &queueURL})
+		if err != nil {
+			panic("cannot purge queue")
+		}
+	*/
 	return queueURL, MustCreateResource(GetQueueARN(ctx, sqsTest, queueURL))
 }
 
