@@ -30,7 +30,11 @@ func Bench() {
 	var sess *session.Session
 	var err error
 	if os.Getenv("AWS") == "true" {
-		sess, err = session.NewSession(&aws.Config{Region: aws.String("eu-west-3")})
+		sess, err = session.NewSession(&aws.Config{
+			Region:   aws.String("eu-west-3"),
+			Logger:   aws.NewDefaultLogger(),
+			LogLevel: aws.LogLevel(aws.LogDebug | aws.LogDebugWithHTTPBody),
+		})
 	} else {
 		sess, err = session.NewSessionWithOptions(session.Options{
 			Config: aws.Config{
@@ -81,7 +85,7 @@ func Bench() {
 			FlushEvery: 0,
 		},
 		WorkersConfig: workers.Config{
-			Initial: 4,
+			Initial: 1,
 		},
 	}
 
