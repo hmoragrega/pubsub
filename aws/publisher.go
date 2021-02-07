@@ -2,7 +2,6 @@ package aws
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"reflect"
@@ -50,9 +49,9 @@ func (p *Publisher) Publish(ctx context.Context, topic string, env pubsub.Envelo
 		key = "void"
 	}
 
-	base64ID := base64.StdEncoding.EncodeToString(env.ID)
+	//base64ID := base64.StdEncoding.EncodeToString(env.ID)
 	_, err := p.SNS.PublishWithContext(ctx, &sns.PublishInput{
-		MessageDeduplicationId: &base64ID,
+		//MessageDeduplicationId: &base64ID, // TODO only for FIFO queues
 		Message:                stringPtr(env.Body),
 		MessageAttributes:      encodeAttributes(&env),
 		MessageGroupId:         &key,
