@@ -1,4 +1,4 @@
-name: CI
+name: AWS
 
 on: ["workflow_dispatch"]
 
