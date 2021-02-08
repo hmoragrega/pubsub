@@ -19,7 +19,9 @@ import (
 )
 
 func TestBench(t *testing.T) {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 60 * time.Second)
+	defer cancel()
+
 	var (
 		messagesCount, _ = strconv.Atoi(env.GetEnvOrDefault("BENCH_MESSAGES", "10000"))
 		workersCount, _  = strconv.Atoi(env.GetEnvOrDefault("BENCH_WORKERS", "12"))
@@ -89,9 +91,6 @@ func TestBench(t *testing.T) {
 	); err != nil {
 		panic(err)
 	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	go func() {
 		wg.Wait()

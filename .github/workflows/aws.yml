@@ -1,0 +1,32 @@
+name: CI
+
+on: ["workflow_dispatch"]
+
+jobs:
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    env:
+      AWS: true
+      AWS_REGION: eu-west-3
+      BENCH_MESSAGES: 55
+      BENCH_WORKERS: 4
+      BENCH_ASYNC_BATCH: 10
+      BENCH_MESSAGE_SIZE: 10
+    steps:
+
+      - name: Set up Go 1.x
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.15
+
+      - name: Check out code into the Go module directory
+        uses: actions/checkout@v2
+
+      - name: Get dependencies
+        run: |
+          go mod download
+
+      - name: Test
+        run: make test

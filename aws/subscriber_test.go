@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand"
 	"os"
 	"reflect"
 	"strconv"
@@ -94,11 +95,12 @@ func TestPubSubIntegration(t *testing.T) {
 	defer cancel()
 
 	var (
-		testTopic     = "pubsub-test-topic"
+		testTopic     = fmt.Sprintf("aws-pubsub-integration-%d", rand.Int31())
+		testQueue     = fmt.Sprintf("%s-queue", testTopic)
 		eventName     = "test-struct"
 		testAttribute = "test-attribute"
 		topicARN      = createTestTopic(ctx, t, testTopic)
-		queueURL      = createTestQueue(ctx, t, "pubsub-test-queue")
+		queueURL      = createTestQueue(ctx, t, testQueue)
 		_             = subscribeTestTopic(ctx, t, topicARN, queueURL)
 		jsonMarshaler pubsub.JSONMarshaller
 	)
