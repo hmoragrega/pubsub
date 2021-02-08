@@ -19,7 +19,7 @@ import (
 )
 
 func TestBench(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 60 * time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
 	var (
@@ -29,10 +29,10 @@ func TestBench(t *testing.T) {
 		messageSize, _   = strconv.Atoi(env.GetEnvOrDefault("BENCH_MESSAGE_SIZE", "10"))
 		topic            = fmt.Sprintf("benchmark-%d", rand.Int31())
 		queue            = fmt.Sprintf("%s-queue", topic)
-		topicARN         = MustCreateResource(CreateTopic(ctx, snsTest, topic))
-		queueURL         = MustCreateResource(CreateQueue(ctx, sqsTest, queue))
-		queueARN         = MustCreateResource(GetQueueARN(ctx, sqsTest, queueURL))
-		subscription     = MustCreateResource(Subscribe(ctx, snsTest, topicARN, queueARN))
+		topicARN         = MustGetResource(CreateTopic(ctx, snsTest, topic))
+		queueURL         = MustGetResource(CreateQueue(ctx, sqsTest, queue))
+		queueARN         = MustGetResource(GetQueueARN(ctx, sqsTest, queueURL))
+		subscription     = MustGetResource(Subscribe(ctx, snsTest, topicARN, queueARN))
 		marshaller       = &pubsub.NoOpMarshaller{}
 	)
 	t.Cleanup(func() {
