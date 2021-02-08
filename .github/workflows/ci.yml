@@ -1,12 +1,14 @@
 name: CI
 
-on: ["push", "pull_request"]
+on: ["push"]
 
 jobs:
 
   build:
     name: Build
     runs-on: ubuntu-latest
+    env:
+      BENCH_MESSAGES: 150
     steps:
 
       - name: Set up Go 1.x

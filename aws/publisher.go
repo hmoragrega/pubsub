@@ -21,7 +21,7 @@ const (
 	versionAttributeKey   = "version"
 	keyAttributeKey       = "key"
 	nameAttributeKey      = "name"
-	customAttributePrefix = "x-custom-"
+	customAttributePrefix = "x-"
 )
 
 type Publisher struct {

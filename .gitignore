@@ -6,3 +6,4 @@ coverage/
 .data
 
 aws.pem
+.env

@@ -61,7 +61,7 @@ func Unsubscribe(ctx context.Context, svc *sns.SNS, subscriptionARN string) erro
 	return nil
 }
 
-func MustCreateResource(s string, err error) string {
+func MustGetResource(s string, err error) string {
 	if err != nil {
 		panic(err)
 	}

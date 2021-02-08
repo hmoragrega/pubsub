@@ -24,10 +24,14 @@ import (
 	"github.com/hmoragrega/pubsub"
 )
 
-var sqsTest *sqs.SQS
-var snsTest *sns.SNS
+var (
+	sqsTest *sqs.SQS
+	snsTest *sns.SNS
+)
 
 func TestMain(m *testing.M) {
+	rand.Seed(time.Now().UnixNano())
+
 	cfg := aws.Config{
 		Credentials: credentials.NewEnvCredentials(),
 		Region:      aws.String(env.GetEnvOrDefault("AWS_REGION", "eu-west-3")),
@@ -37,6 +41,11 @@ func TestMain(m *testing.M) {
 		cfg.Endpoint = aws.String(env.GetEnvOrDefault("AWS_ENDPOINT", "localhost:4100"))
 		cfg.DisableSSL = aws.Bool(true)
 	}
+	if os.Getenv("LOGGING") == "true" {
+		cfg.Logger = aws.NewDefaultLogger()
+		cfg.LogLevel = aws.LogLevel(aws.LogDebug | aws.LogDebugWithHTTPBody)
+	}
+
 	sess, err := session.NewSessionWithOptions(session.Options{Config: cfg})
 	if err != nil {
 		panic(err)
@@ -92,7 +101,7 @@ type testStruct struct {
 }
 
 func TestPubSubIntegration(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
 	var (
@@ -102,9 +111,12 @@ func TestPubSubIntegration(t *testing.T) {
 		testAttribute = "test-attribute"
 		topicARN      = createTestTopic(ctx, t, testTopic)
 		queueURL      = createTestQueue(ctx, t, testQueue)
-		_             = subscribeTestTopic(ctx, t, topicARN, queueURL)
+		queueARN      = MustGetResource(GetQueueARN(ctx, sqsTest, queueURL))
 		jsonMarshaler pubsub.JSONMarshaller
 	)
+
+	subscribeTestTopic(ctx, t, topicARN, queueARN)
+	Must(CreateForwardingPolicy(ctx, sqsTest, queueURL, queueARN, topicARN))
 
 	// Create SNS publisher
 	publisher := pubsub.Publisher{
@@ -208,7 +220,7 @@ func TestPubSubIntegration(t *testing.T) {
 }
 
 func createTestQueue(ctx context.Context, t *testing.T, queueName string) string {
-	queueURL := MustCreateResource(CreateQueue(ctx, sqsTest, queueName))
+	queueURL := MustGetResource(CreateQueue(ctx, sqsTest, queueName))
 	t.Cleanup(func() {
 		if err := DeleteQueue(context.Background(), sqsTest, queueURL); err != nil {
 			t.Fatal("cannot delete queue", err)
@@ -222,20 +234,20 @@ func createTestQueue(ctx context.Context, t *testing.T, queueName string) string
 }
 
 func subscribeTestTopic(ctx context.Context, t *testing.T, topicARN, queueURL string) string {
-	subscriptionARN := MustCreateResource(Subscribe(ctx, snsTest, topicARN, queueURL))
+	subscriptionARN := MustGetResource(Subscribe(ctx, snsTest, topicARN, queueURL))
 	t.Cleanup(func() {
 		if err := Unsubscribe(context.Background(), snsTest, subscriptionARN); err != nil {
-			t.Fatal("cannot unsubscribe queue", err)
+			t.Fatal(err)
 		}
 	})
 	return subscriptionARN
 }
 
 func createTestTopic(ctx context.Context, t *testing.T, topicName string) string {
-	queueURL := MustCreateResource(CreateTopic(ctx, snsTest, topicName))
+	queueURL := MustGetResource(CreateTopic(ctx, snsTest, topicName))
 	t.Cleanup(func() {
 		if err := DeleteTopic(context.Background(), snsTest, queueURL); err != nil {
-			t.Fatal("cannot delete topic", err)
+			t.Fatal(err)
 		}
 	})
 	return queueURL

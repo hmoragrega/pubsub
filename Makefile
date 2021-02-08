@@ -1,29 +1,36 @@
 
-export DOCKER_IP    ?= 127.0.0.1
-export AWS_ENDPOINT ?= $(DOCKER_IP):4100
+DOCKER_IP      ?= 127.0.0.1
+AWS_ENDPOINT   ?= $(DOCKER_IP):4100
+COVERAGE_FILE   = coverage.out
+COVERAGE_FILES  = coverage/*.cov
 
-COVERAGE_FILE  = coverage.out
-COVERAGE_FILES = coverage/*.cov
+-include .env
+export
+
+.PHONY: env
+env:
+	@printenv
 
 .PHONY: up
 up:
 	@mkdir -p .data/pulsar
 	@docker-compose up -d
 	@./scripts/wait-for-sqs.sh
-# @./scripts/wait-for-pulsar.sh
 
 .PHONY: down
 down:
 	@docker-compose down
 
 .PHONY: test
-test: up
-	mkdir -p coverage
-	go test -race -v -tags=integration -coverprofile=./coverage/integration.cov ./...
+test: up integration
+
+integration:
+	@mkdir -p coverage
+	@go test -race -v -tags=integration -coverprofile=./coverage/integration.cov ./...
 
 .PHONY: clean
 clean:
-	rm -rf $(COVERAGE_FILE)
+	@rm -rf $(COVERAGE_FILE)
 
 .PHONY: coverage
 coverage: test coverage-merge

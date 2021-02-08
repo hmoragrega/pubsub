@@ -194,7 +194,7 @@ func (r *Router) run(ctx context.Context, consumers []*consumer) (err error) {
 func (r *Router) consume(ctx context.Context, c *consumer) error {
 	for {
 		msg, err := c.subscriber.Next(ctx)
-		if errors.Is(err, context.Canceled) {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return nil
 		}
 		if err := r.check(ctx, r.OnReceive, c, msg, err); err != nil {

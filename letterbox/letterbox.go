@@ -11,9 +11,9 @@ import (
 )
 
 const (
-	responseTopicAttribute = "letterbox:response-topic"
-	requestIDAttribute     = "letterbox:request-id"
-	requestedAtAttribute   = "letterbox:requested-at"
+	responseTopicAttribute = "letterbox-response-topic"
+	requestIDAttribute     = "letterbox-request-id"
+	requestedAtAttribute   = "letterbox-requested-at"
 )
 
 var (

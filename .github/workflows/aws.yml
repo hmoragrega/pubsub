@@ -10,10 +10,13 @@ jobs:
     env:
       AWS: true
       AWS_REGION: eu-west-3
-      BENCH_MESSAGES: 55
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      BENCH_MESSAGES: 150
       BENCH_WORKERS: 4
       BENCH_ASYNC_BATCH: 10
       BENCH_MESSAGE_SIZE: 10
+      #LOGGING: true
     steps:
 
       - name: Set up Go 1.x
@@ -29,4 +32,4 @@ jobs:
           go mod download
 
       - name: Test
-        run: go test -race -v -tags=integration ./...
+        run: make integration
