@@ -1,4 +1,4 @@
-package pubsub
+package letterbox
 
 import (
 	"context"
@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/hmoragrega/pubsub"
 )
 
 const (
@@ -22,8 +24,8 @@ var (
 
 type Response struct {
 	RequestID   string
-	Request     *Message
-	Response    *Message
+	Request     *pubsub.Message
+	Response    *pubsub.Message
 	RequestedAt time.Time
 
 	// "miss" indicates that the request was not found and
@@ -38,7 +40,7 @@ type Letterbox struct {
 	// when a response is received in this inbox.
 	OnResponse func(response *Response)
 
-	Publisher *Publisher
+	Publisher *pubsub.Publisher
 
 	// response topic for this instance.
 	Topic string
@@ -50,12 +52,12 @@ type Letterbox struct {
 // Request sends the request and waits until:
 // - the response is available.
 // - the given context is done.
-func (x *Letterbox) Request(ctx context.Context, topic string, request Message) (*Message, error) {
+func (x *Letterbox) Request(ctx context.Context, topic string, request pubsub.Message) (*pubsub.Message, error) {
 	var id []byte
 	if len(request.ID) > 0 {
 		id = request.ID
 	} else {
-		id = NewID()
+		id = pubsub.NewID()
 	}
 	requestID := base64.StdEncoding.EncodeToString(id)
 
@@ -86,8 +88,8 @@ func (x *Letterbox) Request(ctx context.Context, topic string, request Message) 
 }
 
 // ServerHandler wrap the server handler to accept the responses
-func (x *Letterbox) ServerHandler(handler func(context.Context, *Message) (*Message, error)) MessageHandlerFunc {
-	return func(ctx context.Context, request *Message) error {
+func (x *Letterbox) ServerHandler(handler func(context.Context, *pubsub.Message) (*pubsub.Message, error)) pubsub.MessageHandlerFunc {
+	return func(ctx context.Context, request *pubsub.Message) error {
 		response, err := handler(ctx, request)
 		if err != nil {
 			return err
@@ -97,7 +99,7 @@ func (x *Letterbox) ServerHandler(handler func(context.Context, *Message) (*Mess
 }
 
 // Response sends a response to a request.
-func (x *Letterbox) Response(ctx context.Context, request, response *Message) error {
+func (x *Letterbox) Response(ctx context.Context, request, response *pubsub.Message) error {
 	topic := request.GetAttribute(responseTopicAttribute)
 	if topic == "" {
 		return fmt.Errorf("missing response topic in request")
@@ -119,7 +121,7 @@ func (x *Letterbox) Response(ctx context.Context, request, response *Message) er
 }
 
 // HandleMessage is the message handler for the responses
-func (x *Letterbox) HandleMessage(_ context.Context, response *Message) error {
+func (x *Letterbox) HandleMessage(_ context.Context, response *pubsub.Message) error {
 	requestID := response.GetAttribute(requestIDAttribute)
 	if requestID == "" {
 		return fmt.Errorf("missing request ID")
@@ -169,12 +171,12 @@ func (x *Letterbox) pop(id string) (requestAddress, bool) {
 
 type requestAddress struct {
 	c       chan *Response
-	request *Message
+	request *pubsub.Message
 }
 
 // waitFor creates a channel to receive the response
 // for a request. It fails if the request ID is not unique.
-func (x *Letterbox) waitFor(id string, request *Message) (<-chan *Response, error) {
+func (x *Letterbox) waitFor(id string, request *pubsub.Message) (<-chan *Response, error) {
 	x.mx.Lock()
 	defer x.mx.Unlock()
 	if x.requests == nil {

@@ -62,3 +62,53 @@ func (p *Publisher) Publish(ctx context.Context, topic string, message Message) 
 		Version:    p.Marshaler.Version(),
 	})
 }
+
+func (p *Publisher) SendMessage(ctx context.Context, topic string, message Message) error {
+	if message.Name == "" {
+		return errors.New("missing message name")
+	}
+
+	body, err := p.Marshaler.Marshal(message.Data)
+	if err != nil {
+		return err
+	}
+
+	id := message.ID
+	if len(message.ID) == 0 {
+		id = NewID()
+	}
+
+	return p.Publisher.Publish(ctx, topic, Envelope{
+		ID:         id,
+		Name:       message.Name,
+		Key:        message.Key,
+		Attributes: message.Attributes,
+		Body:       body,
+		Version:    p.Marshaler.Version(),
+	})
+}
+
+func (p *Publisher) prepareEnvelope(message Message) (*Envelope, error) {
+	if message.Name == "" {
+		return nil, errors.New("missing message name")
+	}
+
+	body, err := p.Marshaler.Marshal(message.Data)
+	if err != nil {
+		return nil, err
+	}
+
+	id := message.ID
+	if len(message.ID) == 0 {
+		id = NewID()
+	}
+
+	return &Envelope{
+		ID:         id,
+		Name:       message.Name,
+		Key:        message.Key,
+		Attributes: message.Attributes,
+		Body:       body,
+		Version:    p.Marshaler.Version(),
+	}, nil
+}

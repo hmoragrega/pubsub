@@ -44,18 +44,18 @@ func (p *Publisher) Publish(ctx context.Context, topic string, env pubsub.Envelo
 	}
 
 	// every FIFO queue message needs to have a message group in SNS
-	key := env.Key
-	if key == "" {
-		key = "void"
-	}
+	// @TODO only for FIFO
+	// key := env.Key
+	// if key == "" {
+	//		key = "void"
+	//	}
 
-	//base64ID := base64.StdEncoding.EncodeToString(env.ID)
 	_, err := p.SNS.PublishWithContext(ctx, &sns.PublishInput{
-		//MessageDeduplicationId: &base64ID, // TODO only for FIFO queues
+		TopicArn:          &topicARN,
 		Message:           stringPtr(env.Body),
 		MessageAttributes: encodeAttributes(&env),
-		//MessageGroupId:         &key, //  TODO only for FIFO queues
-		TopicArn: &topicARN,
+		//MessageDeduplicationId: &base64ID, // @TODO FIFO only
+		//MessageGroupId:         &key,      // @TODO FIFO only
 	})
 	if err != nil {
 		return fmt.Errorf("cannot publish message: %w", err)

@@ -1,13 +1,20 @@
 //+build integration
 
-package aws
+package letterbox
 
 import (
 	"context"
 	"testing"
 	"time"
 
+	awssdk "github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/sns"
+	"github.com/aws/aws-sdk-go/service/sqs"
 	"github.com/hmoragrega/pubsub"
+	"github.com/hmoragrega/pubsub/aws"
+	"github.com/hmoragrega/pubsub/internal/env"
 )
 
 type sumRequest struct {
@@ -28,24 +35,57 @@ type subtractResponse struct {
 	X int
 }
 
-func TestInbox(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+var sqsTest *sqs.SQS
+var snsTest *sns.SNS
+
+func TestMain(m *testing.M) {
+	sess, err := session.NewSessionWithOptions(session.Options{
+		Config: awssdk.Config{
+			Credentials: credentials.NewStaticCredentials("id", "secret", "token"),
+			Endpoint:    awssdk.String(env.GetEnvOrDefault("AWS_ENDPOINT", "localhost:4100")),
+			Region:      awssdk.String(env.GetEnvOrDefault("AWS_REGION", "eu-west-3")),
+			DisableSSL:  awssdk.Bool(true),
+		},
+	})
+	if err != nil {
+		panic(err)
+	}
+	sqsTest = sqs.New(sess)
+	snsTest = sns.New(sess)
+	m.Run()
+}
+
+func TestLetterbox(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	var (
 		instanceTopic       = "letterbox-test-instance-topic"
 		mathSvcTopic        = "letterbox-test-math-svc-topic"
-		instanceTopicARN    = createTestTopic(ctx, t, instanceTopic)
-		mathServiceTopicARN = createTestTopic(ctx, t, mathSvcTopic)
-		instanceQueueURL    = createTestQueue(ctx, t, "letterbox-test-instance-queue")
-		mathSvcQueueURL     = createTestQueue(ctx, t, "letterbox-test-math-svc-queue")
-		_                   = subscribeTestTopic(ctx, t, instanceTopicARN, instanceQueueURL)
-		_                   = subscribeTestTopic(ctx, t, mathServiceTopicARN, mathSvcQueueURL)
+		instanceTopicARN    = aws.MustCreateResource(aws.CreateTopic(ctx, snsTest, instanceTopic))
+		mathServiceTopicARN = aws.MustCreateResource(aws.CreateTopic(ctx, snsTest, mathSvcTopic))
+		instanceQueueURL    = aws.MustCreateResource(aws.CreateQueue(ctx, sqsTest, "letterbox-test-instance-queue"))
+		mathSvcQueueURL     = aws.MustCreateResource(aws.CreateQueue(ctx, sqsTest, "letterbox-test-math-svc-queue"))
+		instanceQueueARN    = aws.MustCreateResource(aws.GetQueueARN(ctx, sqsTest, instanceQueueURL))
+		mathSvcQueueARN     = aws.MustCreateResource(aws.GetQueueARN(ctx, sqsTest, mathSvcQueueURL))
+		instanceSub         = aws.MustCreateResource(aws.Subscribe(ctx, snsTest, instanceTopicARN, instanceQueueARN))
+		mathSvcSub          = aws.MustCreateResource(aws.Subscribe(ctx, snsTest, mathServiceTopicARN, mathSvcQueueARN))
 		jsonMarshaler       pubsub.JSONMarshaller
 	)
+	t.Cleanup(func() {
+		ctx := context.Background()
+		aws.Must(aws.Unsubscribe(ctx, snsTest, mathSvcSub))
+		aws.Must(aws.Unsubscribe(ctx, snsTest, instanceSub))
+		aws.Must(aws.DeleteQueue(ctx, sqsTest, mathSvcQueueURL))
+		aws.Must(aws.DeleteQueue(ctx, sqsTest, instanceQueueURL))
+		aws.Must(aws.DeleteTopic(ctx, snsTest, mathServiceTopicARN))
+		aws.Must(aws.DeleteTopic(ctx, snsTest, instanceTopicARN))
+	})
 
 	publisher := &pubsub.Publisher{
-		Publisher: &Publisher{SNS: snsTest, TopicARNs: map[string]string{
+		Publisher: &aws.Publisher{
+			SNS: snsTest,
+			TopicARNs: map[string]string{
 			mathSvcTopic: mathServiceTopicARN,
 		}},
 		Marshaler: &jsonMarshaler,
@@ -63,7 +103,7 @@ func TestInbox(t *testing.T) {
 	jsonMarshaler.Register(subtractRequestEventName, &subtractRequest{})
 	jsonMarshaler.Register(subtractResponseEventName, &subtractResponse{})
 
-	letterbox := &pubsub.Letterbox{
+	letterbox := &Letterbox{
 		Publisher: publisher,
 		Topic:     instanceTopicARN,
 	}
@@ -74,7 +114,7 @@ func TestInbox(t *testing.T) {
 
 	err := router.RegisterHandler(
 		instanceTopic,
-		&Subscriber{SQS: sqsTest, QueueURL: instanceQueueURL},
+		&aws.Subscriber{SQS: sqsTest, QueueURL: instanceQueueURL},
 		pubsub.Dispatcher(map[string]pubsub.MessageHandler{
 			sumResponseEventName:      letterbox,
 			subtractResponseEventName: letterbox,
@@ -86,7 +126,7 @@ func TestInbox(t *testing.T) {
 
 	err = router.RegisterHandler(
 		mathSvcTopic,
-		&Subscriber{SQS: sqsTest, QueueURL: mathSvcQueueURL},
+		&aws.Subscriber{SQS: sqsTest, QueueURL: mathSvcQueueURL},
 		pubsub.Dispatcher(map[string]pubsub.MessageHandler{
 			sumRequestEventName: letterbox.ServerHandler(
 				func(ctx context.Context, request *pubsub.Message) (*pubsub.Message, error) {
