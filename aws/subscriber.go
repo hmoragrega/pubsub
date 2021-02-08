@@ -127,9 +127,8 @@ func (s *Subscriber) Stop(ctx context.Context) (err error) {
 func (s *Subscriber) init() (err error) {
 	s.once.Do(func() {
 		if s.SQS == nil {
-			if s.SQS, err = NewDefaultSQS(); err != nil {
-				return
-			}
+			err = fmt.Errorf("SQS service not set")
+			return
 		}
 		if s.QueueURL == "" {
 			err = fmt.Errorf("QueueURL cannot be empty")

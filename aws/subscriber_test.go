@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"reflect"
 	"strconv"
 	"testing"
@@ -16,20 +17,22 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sns"
 	"github.com/aws/aws-sdk-go/service/sqs"
+	"github.com/hmoragrega/pubsub/internal/env"
 	"github.com/hmoragrega/workers"
 
 	"github.com/hmoragrega/pubsub"
 )
 
 func TestMain(m *testing.M) {
-	sess, err := session.NewSessionWithOptions(session.Options{
-		Config: aws.Config{
-			Credentials: credentials.NewStaticCredentials("id", "secret", "token"),
-			Endpoint:    aws.String(getEnvOrDefault("AWS_ENDPOINT", "localhost:4100")),
-			Region:      aws.String(getEnvOrDefault("AWS_REGION", "us-east-1")),
-			DisableSSL:  aws.Bool(true),
-		},
-	})
+	cfg := aws.Config{
+		Region: aws.String(env.GetEnvOrDefault("AWS_REGION", "eu-west-3")),
+	}
+	if os.Getenv("AWS") != "true" {
+		cfg.Credentials = credentials.NewStaticCredentials("id", "secret", "token")
+		cfg.Endpoint = aws.String(env.GetEnvOrDefault("AWS_ENDPOINT", "localhost:4100"))
+		cfg.DisableSSL = aws.Bool(true)
+	}
+	sess, err := session.NewSessionWithOptions(session.Options{Config: cfg})
 	if err != nil {
 		panic(err)
 	}

@@ -95,23 +95,8 @@ func Bench() {
 	wg.Add(1)
 
 	router := pubsub.Router{
-		Unmarshaler:    unmarshaler,
-		DisableAutoAck: false,
-		StopTimeout:    0,
-		//		OnReceive: func(topic string, msg pubsub.ReceivedMessage, err error) error {
-		//			fmt.Println("on receive", topic, msg.ID(), err)
-		//			return nil
-		//		},
-		//		OnUnmarshal: func(topic string, msg pubsub.ReceivedMessage, err error) error {
-		//			fmt.Println("on unmarshal", topic, msg.ID(), err)
-		//			return nil
-		//		},
-		//		OnHandler: func(topic string, msg pubsub.ReceivedMessage, err error) error {
-		//			fmt.Println("on handler", topic, msg.ID(), err)
-		//			return nil
-		//		},
-		OnAck: func(_ context.Context, _ string, _ pubsub.ReceivedMessage, _ error) error {
-			//fmt.Println("on ack", topic, msg.ID(), err)
+		Unmarshaler: unmarshaler,
+		OnAck: func(_ context.Context, _ string, _ pubsub.ReceivedMessage, err error) error {
 			counter.Add(1)
 			if counter.Count() == messagesCount {
 				wg.Done()
@@ -119,14 +104,13 @@ func Bench() {
 			return nil
 		},
 	}
-	err = router.RegisterHandler(
+	if err = router.RegisterHandler(
 		topic,
 		subscriber,
 		pubsub.MessageHandlerFunc(func(ctx context.Context, message *pubsub.Message) error {
 			return nil
 		}),
-	)
-	if err != nil {
+	); err != nil {
 		panic(err)
 	}
 

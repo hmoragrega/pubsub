@@ -4,6 +4,7 @@ package letterbox
 
 import (
 	"context"
+	"os"
 	"testing"
 	"time"
 
@@ -39,14 +40,15 @@ var sqsTest *sqs.SQS
 var snsTest *sns.SNS
 
 func TestMain(m *testing.M) {
-	sess, err := session.NewSessionWithOptions(session.Options{
-		Config: awssdk.Config{
-			Credentials: credentials.NewStaticCredentials("id", "secret", "token"),
-			Endpoint:    awssdk.String(env.GetEnvOrDefault("AWS_ENDPOINT", "localhost:4100")),
-			Region:      awssdk.String(env.GetEnvOrDefault("AWS_REGION", "eu-west-3")),
-			DisableSSL:  awssdk.Bool(true),
-		},
-	})
+	cfg := awssdk.Config{
+		Region: awssdk.String(env.GetEnvOrDefault("AWS_REGION", "eu-west-3")),
+	}
+	if os.Getenv("AWS") != "true" {
+		cfg.Credentials = credentials.NewStaticCredentials("id", "secret", "token")
+		cfg.Endpoint = awssdk.String(env.GetEnvOrDefault("AWS_ENDPOINT", "localhost:4100"))
+		cfg.DisableSSL = awssdk.Bool(true)
+	}
+	sess, err := session.NewSessionWithOptions(session.Options{Config: cfg})
 	if err != nil {
 		panic(err)
 	}
@@ -86,8 +88,8 @@ func TestLetterbox(t *testing.T) {
 		Publisher: &aws.Publisher{
 			SNS: snsTest,
 			TopicARNs: map[string]string{
-			mathSvcTopic: mathServiceTopicARN,
-		}},
+				mathSvcTopic: mathServiceTopicARN,
+			}},
 		Marshaler: &jsonMarshaler,
 	}
 
