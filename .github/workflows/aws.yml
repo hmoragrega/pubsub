@@ -17,6 +17,7 @@ jobs:
       BENCH_WORKERS: 4
       BENCH_ASYNC_BATCH: 10
       BENCH_MESSAGE_SIZE: 10
+      LOGGING: true
     steps:
 
       - name: Set up Go 1.x
