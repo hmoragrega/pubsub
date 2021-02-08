@@ -29,7 +29,8 @@ var snsTest *sns.SNS
 
 func TestMain(m *testing.M) {
 	cfg := aws.Config{
-		Region: aws.String(env.GetEnvOrDefault("AWS_REGION", "eu-west-3")),
+		Credentials: credentials.NewEnvCredentials(),
+		Region:      aws.String(env.GetEnvOrDefault("AWS_REGION", "eu-west-3")),
 	}
 	if os.Getenv("AWS") != "true" {
 		cfg.Credentials = credentials.NewStaticCredentials("id", "secret", "token")
