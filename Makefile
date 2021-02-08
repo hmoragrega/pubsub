@@ -1,9 +1,15 @@
 
-export DOCKER_IP    ?= 127.0.0.1
-export AWS_ENDPOINT ?= $(DOCKER_IP):4100
+DOCKER_IP      ?= 127.0.0.1
+AWS_ENDPOINT   ?= $(DOCKER_IP):4100
+COVERAGE_FILE   = coverage.out
+COVERAGE_FILES  = coverage/*.cov
 
-COVERAGE_FILE  = coverage.out
-COVERAGE_FILES = coverage/*.cov
+-include .env
+export
+
+.PHONY: env
+env:
+	@printenv
 
 .PHONY: up
 up:
@@ -16,7 +22,9 @@ down:
 	@docker-compose down
 
 .PHONY: test
-test: up
+test: up integration
+
+integration:
 	@mkdir -p coverage
 	@go test -race -v -tags=integration -coverprofile=./coverage/integration.cov ./...
 
