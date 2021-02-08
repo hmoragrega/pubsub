@@ -10,7 +10,6 @@ up:
 	@mkdir -p .data/pulsar
 	@docker-compose up -d
 	@./scripts/wait-for-sqs.sh
-# @./scripts/wait-for-pulsar.sh
 
 .PHONY: down
 down:
@@ -18,12 +17,12 @@ down:
 
 .PHONY: test
 test: up
-	mkdir -p coverage
-	go test -race -v -tags=integration -coverprofile=./coverage/integration.cov ./...
+	@mkdir -p coverage
+	@go test -race -v -tags=integration -coverprofile=./coverage/integration.cov ./...
 
 .PHONY: clean
 clean:
-	rm -rf $(COVERAGE_FILE)
+	@rm -rf $(COVERAGE_FILE)
 
 .PHONY: coverage
 coverage: test coverage-merge
