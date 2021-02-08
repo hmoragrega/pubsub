@@ -1,8 +1,7 @@
 vendor
 
 coverage.out
-/coverage/**
-!/coverage/.gitkeep
+coverage/
 
 .data
 

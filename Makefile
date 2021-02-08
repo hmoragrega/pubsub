@@ -18,9 +18,8 @@ down:
 
 .PHONY: test
 test: up
-	@go test -race -v -tags=integration -coverpkg=./... -coverprofile=coverage/pubsub.cov ./...
-	@cd aws && \
-	go test -race -v -tags=integration -coverpkg=./... -coverprofile=../coverage/aws.cov ./...
+	mkdir -p coverage
+	go test -race -v -tags=integration -coverprofile=./coverage/integration.cov ./...
 
 .PHONY: clean
 clean:

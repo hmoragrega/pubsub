@@ -4,7 +4,7 @@ import "context"
 
 // MessageID a slice of bytes representing
 // a unique message ID
-type MessageID = []byte
+type MessageID = string
 
 // Attributes a list of message attributes.
 type Attributes = map[string]string
@@ -12,7 +12,7 @@ type Attributes = map[string]string
 // ReceivedMessage incoming message consumed by the subscriber.
 type ReceivedMessage interface {
 	// ID of the message, it should be unique.
-	ID() []byte
+	ID() string
 
 	// Name of the message.
 	Name() string

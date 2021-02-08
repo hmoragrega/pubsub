@@ -4,6 +4,8 @@ package letterbox
 
 import (
 	"context"
+	"fmt"
+	"math/rand"
 	"os"
 	"testing"
 	"time"
@@ -58,16 +60,18 @@ func TestMain(m *testing.M) {
 }
 
 func TestLetterbox(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
 	var (
-		instanceTopic       = "letterbox-test-instance-topic"
-		mathSvcTopic        = "letterbox-test-math-svc-topic"
+		instanceTopic       = fmt.Sprintf("letterbox-instance-%d", rand.Int31())
+		instanceQueue       = fmt.Sprintf("%s-queue", instanceTopic)
+		mathSvcTopic        = fmt.Sprintf("letterbox-math-svc-%d", rand.Int31())
+		mathSvcQueue        = fmt.Sprintf("%s-queue", mathSvcTopic)
 		instanceTopicARN    = aws.MustCreateResource(aws.CreateTopic(ctx, snsTest, instanceTopic))
 		mathServiceTopicARN = aws.MustCreateResource(aws.CreateTopic(ctx, snsTest, mathSvcTopic))
-		instanceQueueURL    = aws.MustCreateResource(aws.CreateQueue(ctx, sqsTest, "letterbox-test-instance-queue"))
-		mathSvcQueueURL     = aws.MustCreateResource(aws.CreateQueue(ctx, sqsTest, "letterbox-test-math-svc-queue"))
+		instanceQueueURL    = aws.MustCreateResource(aws.CreateQueue(ctx, sqsTest, instanceQueue))
+		mathSvcQueueURL     = aws.MustCreateResource(aws.CreateQueue(ctx, sqsTest, mathSvcQueue))
 		instanceQueueARN    = aws.MustCreateResource(aws.GetQueueARN(ctx, sqsTest, instanceQueueURL))
 		mathSvcQueueARN     = aws.MustCreateResource(aws.GetQueueARN(ctx, sqsTest, mathSvcQueueURL))
 		instanceSub         = aws.MustCreateResource(aws.Subscribe(ctx, snsTest, instanceTopicARN, instanceQueueARN))

@@ -12,7 +12,7 @@ var (
 )
 
 type message struct {
-	id         []byte
+	id         *string
 	key        *string
 	name       *string
 	version    *string
@@ -24,8 +24,8 @@ type message struct {
 	sqsReceiptHandle *string
 }
 
-func (m *message) ID() []byte {
-	return m.id
+func (m *message) ID() string {
+	return *m.id
 }
 
 func (m *message) Key() string {

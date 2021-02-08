@@ -7,7 +7,7 @@ import (
 )
 
 type ReceivedMessageStub struct {
-	IDFunc         func() []byte
+	IDFunc         func() string
 	NameFunc       func() string
 	KeyFunc        func() string
 	BodyFunc       func() []byte
@@ -16,7 +16,7 @@ type ReceivedMessageStub struct {
 	AckFunc        func(ctx context.Context) error
 }
 
-func (m *ReceivedMessageStub) ID() []byte {
+func (m *ReceivedMessageStub) ID() string {
 	return m.IDFunc()
 }
 

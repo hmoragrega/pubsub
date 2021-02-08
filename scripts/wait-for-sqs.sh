@@ -11,7 +11,7 @@ do
 
     status=$(curl http://${DOCKER_IP}:4100/health 2>/dev/null)
     if [ "${status}" == 'OK' ]; then
-      printf "\nSQS & SNS ready"
+      printf "\nSQS & SNS ready\n"
       break;
     fi;
 

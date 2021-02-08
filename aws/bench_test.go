@@ -7,30 +7,31 @@ import (
 	"encoding/base64"
 	"fmt"
 	"math/rand"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/hmoragrega/pubsub"
+	"github.com/hmoragrega/pubsub/internal/env"
 	"github.com/hmoragrega/workers"
-)
-
-const (
-	messagesCount = 10000
 )
 
 func TestBench(t *testing.T) {
 	ctx := context.Background()
-
 	var (
-		topic        = fmt.Sprintf("benchmark-%d", rand.Int31())
-		queue        = fmt.Sprintf("%s-queue", topic)
-		topicARN     = MustCreateResource(CreateTopic(ctx, snsTest, topic))
-		queueURL     = MustCreateResource(CreateQueue(ctx, sqsTest, queue))
-		queueARN     = MustCreateResource(GetQueueARN(ctx, sqsTest, queueURL))
-		subscription = MustCreateResource(Subscribe(ctx, snsTest, topicARN, queueARN))
-		marshaller   = &pubsub.NoOpMarshaller{}
+		messagesCount, _ = strconv.Atoi(env.GetEnvOrDefault("BENCH_MESSAGES", "10000"))
+		workersCount, _  = strconv.Atoi(env.GetEnvOrDefault("BENCH_WORKERS", "12"))
+		asyncBatch, _    = strconv.Atoi(env.GetEnvOrDefault("BENCH_ASYNC_BATCH", "10"))
+		messageSize, _   = strconv.Atoi(env.GetEnvOrDefault("BENCH_MESSAGE_SIZE", "10"))
+		topic            = fmt.Sprintf("benchmark-%d", rand.Int31())
+		queue            = fmt.Sprintf("%s-queue", topic)
+		topicARN         = MustCreateResource(CreateTopic(ctx, snsTest, topic))
+		queueURL         = MustCreateResource(CreateQueue(ctx, sqsTest, queue))
+		queueARN         = MustCreateResource(GetQueueARN(ctx, sqsTest, queueURL))
+		subscription     = MustCreateResource(Subscribe(ctx, snsTest, topicARN, queueARN))
+		marshaller       = &pubsub.NoOpMarshaller{}
 	)
 	t.Cleanup(func() {
 		ctx := context.Background()
@@ -49,7 +50,7 @@ func TestBench(t *testing.T) {
 		Marshaler: marshaller,
 	}
 
-	if err := publishMessages(publisher, topic, 10); err != nil {
+	if err := publishMessages(publisher, topic, messagesCount, messageSize); err != nil {
 		t.Fatal("error publishing messages", err)
 	}
 
@@ -57,12 +58,10 @@ func TestBench(t *testing.T) {
 		SQS:      sqsTest,
 		QueueURL: queueURL,
 		AckConfig: AckConfig{
-			Timeout:    0,
-			BatchSize:  10,
-			FlushEvery: 0,
+			BatchSize: asyncBatch,
 		},
 		WorkersConfig: workers.Config{
-			Initial: 8,
+			Initial: workersCount,
 		},
 	}
 
@@ -75,7 +74,7 @@ func TestBench(t *testing.T) {
 		Unmarshaler: marshaller,
 		OnAck: func(_ context.Context, _ string, _ pubsub.ReceivedMessage, err error) error {
 			counter.Add(1)
-			if counter.Count() == messagesCount {
+			if counter.Count() == uint64(messagesCount) {
 				wg.Done()
 			}
 			return nil
@@ -126,7 +125,7 @@ func TestBench(t *testing.T) {
 	}
 }
 
-func publishMessages(publisher *pubsub.Publisher, topic string, messageSize int) error {
+func publishMessages(publisher *pubsub.Publisher, topic string, messagesCount, messageSize int) error {
 	rand.Seed(time.Now().UnixNano())
 
 	fmt.Printf("sending %d messages\n", messagesCount)

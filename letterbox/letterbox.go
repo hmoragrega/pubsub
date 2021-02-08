@@ -2,7 +2,6 @@ package letterbox
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"sync"
@@ -12,9 +11,9 @@ import (
 )
 
 const (
-	responseTopicAttribute = "inbox-response-topic"
-	requestIDAttribute     = "inbox-request-id"
-	requestedAtAttribute   = "inbox-requested-at"
+	responseTopicAttribute = "letterbox:response-topic"
+	requestIDAttribute     = "letterbox:request-id"
+	requestedAtAttribute   = "letterbox:requested-at"
 )
 
 var (
@@ -37,7 +36,7 @@ type Response struct {
 
 type Letterbox struct {
 	// OnResponse is an optional callback that will be triggered
-	// when a response is received in this inbox.
+	// when a response is received in this letterbox.
 	OnResponse func(response *Response)
 
 	Publisher *pubsub.Publisher
@@ -53,13 +52,10 @@ type Letterbox struct {
 // - the response is available.
 // - the given context is done.
 func (x *Letterbox) Request(ctx context.Context, topic string, request pubsub.Message) (*pubsub.Message, error) {
-	var id []byte
-	if len(request.ID) > 0 {
-		id = request.ID
-	} else {
-		id = pubsub.NewID()
+	requestID := request.ID
+	if len(requestID) == 0 {
+		requestID = pubsub.NewID()
 	}
-	requestID := base64.StdEncoding.EncodeToString(id)
 
 	// inject the attributes so we know where to answer.
 	request.SetAttribute(responseTopicAttribute, x.Topic)

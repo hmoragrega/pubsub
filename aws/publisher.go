@@ -66,8 +66,8 @@ func (p *Publisher) Publish(ctx context.Context, topic string, env pubsub.Envelo
 func encodeAttributes(env *pubsub.Envelope) map[string]*sns.MessageAttributeValue {
 	attributes := map[string]*sns.MessageAttributeValue{
 		idAttributeKey: {
-			DataType:    binaryDataType,
-			BinaryValue: env.ID,
+			DataType:    stringDataType,
+			StringValue: &env.ID,
 		},
 		versionAttributeKey: {
 			DataType:    stringDataType,

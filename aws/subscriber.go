@@ -201,7 +201,7 @@ func (s *Subscriber) wrapMessages(in []*sqs.Message) (out []pubsub.ReceivedMessa
 			return nil, fmt.Errorf("message without name: AWS message ID %s", awsMsgID)
 		}
 		out[i] = &message{
-			id:               msgID.BinaryValue,
+			id:               msgID.StringValue,
 			version:          version.StringValue,
 			key:              &key,
 			name:             name.StringValue,
