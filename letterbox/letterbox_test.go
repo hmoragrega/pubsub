@@ -78,6 +78,9 @@ func TestLetterbox(t *testing.T) {
 		mathSvcSub          = aws.MustGetResource(aws.Subscribe(ctx, snsTest, mathServiceTopicARN, mathSvcQueueARN))
 		jsonMarshaler       pubsub.JSONMarshaller
 	)
+	aws.Must(aws.CreateForwardingPolicy(ctx, sqsTest, instanceQueueURL, instanceQueueARN, instanceTopicARN))
+	aws.Must(aws.CreateForwardingPolicy(ctx, sqsTest, mathSvcQueueURL, mathSvcQueueARN, mathServiceTopicARN))
+
 	t.Cleanup(func() {
 		ctx := context.Background()
 		aws.Must(aws.Unsubscribe(ctx, snsTest, mathSvcSub))
