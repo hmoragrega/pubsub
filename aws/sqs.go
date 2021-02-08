@@ -35,6 +35,18 @@ func CreateQueue(ctx context.Context, svc *sqs.SQS, queueName string) (string, e
 	return *out.QueueUrl, nil
 }
 
+func GetQueueARN(ctx context.Context, svc *sqs.SQS, queueURL string) (string, error) {
+	out, err := svc.GetQueueAttributesWithContext(ctx, &sqs.GetQueueAttributesInput{
+		AttributeNames: []*string{aws.String("QueueArn")},
+		QueueUrl:       &queueURL,
+	})
+	if err != nil {
+		return "", fmt.Errorf("cannot get queue ARN %s: %v", queueURL, err)
+	}
+
+	return *out.Attributes["QueueArn"], nil
+}
+
 func DeleteQueue(ctx context.Context, svc *sqs.SQS, queueURL string) error {
 	_, err := svc.DeleteQueueWithContext(ctx, &sqs.DeleteQueueInput{
 		QueueUrl: aws.String(queueURL),

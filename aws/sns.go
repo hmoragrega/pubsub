@@ -45,9 +45,9 @@ func DeleteTopic(ctx context.Context, svc *sns.SNS, topicARN string) error {
 	return err
 }
 
-func Subscribe(ctx context.Context, svc *sns.SNS, topicARN, queueURL string) (string, error) {
+func Subscribe(ctx context.Context, svc *sns.SNS, topicARN, queueARN string) (string, error) {
 	out, err := svc.SubscribeWithContext(ctx, &sns.SubscribeInput{
-		Endpoint: &queueURL,
+		Endpoint: &queueARN,
 		TopicArn: &topicARN,
 		Attributes: map[string]*string{
 			"RawMessageDelivery": aws.String("true"), // pass the raw message to SQS
@@ -55,7 +55,7 @@ func Subscribe(ctx context.Context, svc *sns.SNS, topicARN, queueURL string) (st
 		Protocol: aws.String("sqs"),
 	})
 	if err != nil {
-		return "", fmt.Errorf("cannot subscribe queue %s to topic %s: %v", queueURL, topicARN, err)
+		return "", fmt.Errorf("cannot subscribe queue %s to topic %s: %v", queueARN, topicARN, err)
 	}
 	return *out.SubscriptionArn, nil
 }
@@ -75,4 +75,10 @@ func MustCreateResource(s string, err error) string {
 		panic(err)
 	}
 	return s
+}
+
+func Must(err error) {
+	if err != nil {
+		panic(err)
+	}
 }

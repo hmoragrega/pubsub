@@ -2,7 +2,7 @@ package aws
 
 import (
 	"context"
-	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -160,7 +160,7 @@ func (s *asyncAck) New() workers.Job {
 	add := func(m *message) {
 		batch = append(batch, m)
 		input = append(input, &sqs.DeleteMessageBatchRequestEntry{
-			Id:            aws.String(base64.StdEncoding.EncodeToString(m.ID())),
+			Id:            aws.String(hex.EncodeToString(m.ID())),
 			ReceiptHandle: m.sqsReceiptHandle,
 		})
 	}

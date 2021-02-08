@@ -166,7 +166,7 @@ func (r *Router) stop(consumers []*consumer) error {
 		g.Go(func() error {
 			stopErr := c.subscriber.Stop(ctx)
 			if stopErr != nil {
-				stopErr = fmt.Errorf("error stopping subscriber for topic: %w", stopErr)
+				stopErr = fmt.Errorf("error stopping subscriber for topic %s: %w", c.topic, stopErr)
 			}
 			return stopErr
 		})
