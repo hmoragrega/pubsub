@@ -1,3 +1,5 @@
+//+build integration
+
 package aws
 
 import (
@@ -5,16 +7,11 @@ import (
 	"encoding/base64"
 	"fmt"
 	"math/rand"
-	"os"
 	"sync"
 	"sync/atomic"
+	"testing"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/sns"
-	"github.com/aws/aws-sdk-go/service/sqs"
 	"github.com/hmoragrega/pubsub"
 	"github.com/hmoragrega/workers"
 )
@@ -23,45 +20,25 @@ const (
 	messagesCount = 10000
 )
 
-var sqsTest *sqs.SQS
-var snsTest *sns.SNS
-
-func Bench() {
-	var sess *session.Session
-	var err error
-	if os.Getenv("AWS") == "true" {
-		sess, err = session.NewSession(&aws.Config{
-			Region: aws.String("eu-west-3"),
-			//Logger:   aws.NewDefaultLogger(),
-			//LogLevel: aws.LogLevel(aws.LogDebug | aws.LogDebugWithHTTPBody),
-		})
-	} else {
-		sess, err = session.NewSessionWithOptions(session.Options{
-			Config: aws.Config{
-				Credentials: credentials.NewStaticCredentials("id", "secret", "token"),
-				Endpoint:    aws.String(getEnvOrDefault("AWS_ENDPOINT", "localhost:4100")), //goaws
-				//Endpoint:    aws.String(getEnvOrDefault("AWS_ENDPOINT", "localhost:4566")), // localstack
-				Region:     aws.String(getEnvOrDefault("AWS_REGION", "eu-west-3")),
-				DisableSSL: aws.Bool(true),
-				//Logger:     aws.NewDefaultLogger(),
-				//LogLevel:   aws.LogLevel(aws.LogDebug | aws.LogDebugWithHTTPBody),
-			},
-		})
-	}
-	if err != nil {
-		panic(err)
-	}
-	sqsTest = sqs.New(sess)
-	snsTest = sns.New(sess)
-
+func TestBench(t *testing.T) {
 	ctx := context.Background()
 
-	topic := "benchmark"
-	topicARN := CreateTestTopic(ctx, topic)
-	queueURL, queueARN := CreateTestQueue(ctx, "my-queue")
-	SubscribeTestTopic(ctx, topicARN, queueARN)
+	var (
+		topic        = fmt.Sprintf("benchmark-%d", rand.Int31())
+		queue        = fmt.Sprintf("%s-queue", topic)
+		topicARN     = MustCreateResource(CreateTopic(ctx, snsTest, topic))
+		queueURL     = MustCreateResource(CreateQueue(ctx, sqsTest, queue))
+		queueARN     = MustCreateResource(GetQueueARN(ctx, sqsTest, queueURL))
+		subscription = MustCreateResource(Subscribe(ctx, snsTest, topicARN, queueARN))
+		marshaller   = &pubsub.NoOpMarshaller{}
+	)
+	t.Cleanup(func() {
+		ctx := context.Background()
+		Must(Unsubscribe(ctx, snsTest, subscription))
+		Must(DeleteQueue(ctx, sqsTest, queueURL))
+		Must(DeleteTopic(ctx, snsTest, topicARN))
+	})
 
-	unmarshaler := &noOpMarshaler{}
 	publisher := &pubsub.Publisher{
 		Publisher: &Publisher{
 			SNS: snsTest,
@@ -69,11 +46,11 @@ func Bench() {
 				topic: topicARN,
 			},
 		},
-		Marshaler: unmarshaler,
+		Marshaler: marshaller,
 	}
 
 	if err := publishMessages(publisher, topic, 10); err != nil {
-		panic(err)
+		t.Fatal("error publishing messages", err)
 	}
 
 	subscriber := &Subscriber{
@@ -95,7 +72,7 @@ func Bench() {
 	wg.Add(1)
 
 	router := pubsub.Router{
-		Unmarshaler: unmarshaler,
+		Unmarshaler: marshaller,
 		OnAck: func(_ context.Context, _ string, _ pubsub.ReceivedMessage, err error) error {
 			counter.Add(1)
 			if counter.Count() == messagesCount {
@@ -104,7 +81,7 @@ func Bench() {
 			return nil
 		},
 	}
-	if err = router.RegisterHandler(
+	if err := router.RegisterHandler(
 		topic,
 		subscriber,
 		pubsub.MessageHandlerFunc(func(ctx context.Context, message *pubsub.Message) error {
@@ -135,7 +112,7 @@ func Bench() {
 	}()
 
 	start := time.Now()
-	err = router.Run(ctx)
+	err := router.Run(ctx)
 
 	elapsed := time.Now().Sub(start)
 	fmt.Printf("consumed %d messages in %s, %f msg/s\n", messagesCount, elapsed, float64(messagesCount)/elapsed.Seconds())
@@ -145,27 +122,8 @@ func Bench() {
 	fmt.Printf("mean throughput: %f\n", counter.MeanPerSecond()/24)
 
 	if err != nil {
-		panic(err)
+		t.Fatal("router finished with error", err)
 	}
-}
-
-type noOpMarshaler struct{}
-
-func (m *noOpMarshaler) Marshal(data interface{}) ([]byte, error) {
-	return []byte(data.(string)), nil
-}
-
-func (m *noOpMarshaler) Version() string {
-	return "no-op"
-}
-
-func (m *noOpMarshaler) Unmarshal(message pubsub.ReceivedMessage) (*pubsub.Message, error) {
-	return &pubsub.Message{
-		ID:   message.ID(),
-		Name: message.Name(),
-		Key:  message.Key(),
-		Data: message.Body(),
-	}, nil
 }
 
 func publishMessages(publisher *pubsub.Publisher, topic string, messageSize int) error {
@@ -233,34 +191,6 @@ func publishMessages(publisher *pubsub.Publisher, topic string, messageSize int)
 	fmt.Printf("added %d messages in %s, %f msg/s\n", messagesCount, elapsed, float64(messagesCount)/elapsed.Seconds())
 
 	return nil
-}
-
-func CreateTestQueue(ctx context.Context, queueName string) (string, string) {
-	queueURL := MustCreateResource(CreateQueue(ctx, sqsTest, queueName))
-	/*	_, err := sqsTest.PurgeQueueWithContext(ctx, &sqs.PurgeQueueInput{QueueUrl: &queueURL})
-		if err != nil {
-			panic("cannot purge queue")
-		}
-	*/
-	return queueURL, MustCreateResource(GetQueueARN(ctx, sqsTest, queueURL))
-}
-
-func SubscribeTestTopic(ctx context.Context, topicARN, queueARN string) string {
-	subscriptionARN := MustCreateResource(Subscribe(ctx, snsTest, topicARN, queueARN))
-	return subscriptionARN
-}
-
-func CreateTestTopic(ctx context.Context, topicName string) string {
-	queueURL := MustCreateResource(CreateTopic(ctx, snsTest, topicName))
-	return queueURL
-}
-
-func getEnvOrDefault(key string, d string) string {
-	s := os.Getenv(key)
-	if s == "" {
-		return d
-	}
-	return s
 }
 
 func payload(messageSize int) (string, error) {

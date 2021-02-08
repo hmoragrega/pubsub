@@ -14,10 +14,6 @@ type JSONMarshaller struct {
 	types map[string]reflect.Type
 }
 
-func (m *JSONMarshaller) Version() string {
-	return jsonMarshallerVersion0x01
-}
-
 // Register an event type. Not thread-safe.
 func (m *JSONMarshaller) Register(name string, v interface{}) {
 	if m.types == nil {
@@ -26,8 +22,9 @@ func (m *JSONMarshaller) Register(name string, v interface{}) {
 	m.types[name] = reflect.TypeOf(v).Elem()
 }
 
-func (m *JSONMarshaller) Marshal(v interface{}) ([]byte, error) {
-	return json.Marshal(v)
+func (m *JSONMarshaller) Marshal(v interface{}) ([]byte, string, error) {
+	b, err := json.Marshal(v)
+	return b, jsonMarshallerVersion0x01, err
 }
 
 // BodyParser is message handler middleware that can decode

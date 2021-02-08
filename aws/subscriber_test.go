@@ -23,6 +23,9 @@ import (
 	"github.com/hmoragrega/pubsub"
 )
 
+var sqsTest *sqs.SQS
+var snsTest *sns.SNS
+
 func TestMain(m *testing.M) {
 	cfg := aws.Config{
 		Region: aws.String(env.GetEnvOrDefault("AWS_REGION", "eu-west-3")),

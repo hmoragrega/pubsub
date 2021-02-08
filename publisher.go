@@ -11,11 +11,7 @@ type EnvelopePublisher interface {
 
 type Marshaler interface {
 	// Marshal the contents of the message.
-	Marshal(data interface{}) ([]byte, error)
-	// Version identifies the marshaller version
-	// allows changing the marshaller implementation
-	// while being able to consume older messages.
-	Version() string
+	Marshal(data interface{}) (payload []byte, version string, err error)
 }
 
 // Envelope holds the data that need to be transmitted.
@@ -43,7 +39,7 @@ func (p *Publisher) Publish(ctx context.Context, topic string, message Message) 
 		return errors.New("missing message name")
 	}
 
-	body, err := p.Marshaler.Marshal(message.Data)
+	body, version, err := p.Marshaler.Marshal(message.Data)
 	if err != nil {
 		return err
 	}
@@ -59,56 +55,6 @@ func (p *Publisher) Publish(ctx context.Context, topic string, message Message) 
 		Key:        message.Key,
 		Attributes: message.Attributes,
 		Body:       body,
-		Version:    p.Marshaler.Version(),
+		Version:    version,
 	})
-}
-
-func (p *Publisher) SendMessage(ctx context.Context, topic string, message Message) error {
-	if message.Name == "" {
-		return errors.New("missing message name")
-	}
-
-	body, err := p.Marshaler.Marshal(message.Data)
-	if err != nil {
-		return err
-	}
-
-	id := message.ID
-	if len(message.ID) == 0 {
-		id = NewID()
-	}
-
-	return p.Publisher.Publish(ctx, topic, Envelope{
-		ID:         id,
-		Name:       message.Name,
-		Key:        message.Key,
-		Attributes: message.Attributes,
-		Body:       body,
-		Version:    p.Marshaler.Version(),
-	})
-}
-
-func (p *Publisher) prepareEnvelope(message Message) (*Envelope, error) {
-	if message.Name == "" {
-		return nil, errors.New("missing message name")
-	}
-
-	body, err := p.Marshaler.Marshal(message.Data)
-	if err != nil {
-		return nil, err
-	}
-
-	id := message.ID
-	if len(message.ID) == 0 {
-		id = NewID()
-	}
-
-	return &Envelope{
-		ID:         id,
-		Name:       message.Name,
-		Key:        message.Key,
-		Attributes: message.Attributes,
-		Body:       body,
-		Version:    p.Marshaler.Version(),
-	}, nil
 }
