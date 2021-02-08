@@ -29,18 +29,13 @@ func TestBench(t *testing.T) {
 		messageSize, _   = strconv.Atoi(env.GetEnvOrDefault("BENCH_MESSAGE_SIZE", "10"))
 		topic            = fmt.Sprintf("benchmark-%d", rand.Int31())
 		queue            = fmt.Sprintf("%s-queue", topic)
-		topicARN         = MustGetResource(CreateTopic(ctx, snsTest, topic))
-		queueURL         = MustGetResource(CreateQueue(ctx, sqsTest, queue))
+		topicARN         = createTestTopic(ctx, t, topic)
+		queueURL         = createTestQueue(ctx, t, queue)
 		queueARN         = MustGetResource(GetQueueARN(ctx, sqsTest, queueURL))
-		subscription     = MustGetResource(Subscribe(ctx, snsTest, topicARN, queueARN))
 		marshaller       = &pubsub.NoOpMarshaller{}
 	)
-	t.Cleanup(func() {
-		ctx := context.Background()
-		Must(Unsubscribe(ctx, snsTest, subscription))
-		Must(DeleteQueue(ctx, sqsTest, queueURL))
-		Must(DeleteTopic(ctx, snsTest, topicARN))
-	})
+	subscribeTestTopic(ctx, t, topicARN, queueARN)
+	Must(CreateForwardingPolicy(ctx, sqsTest, queueURL, queueARN, topicARN))
 
 	publisher := &pubsub.Publisher{
 		Publisher: &Publisher{
