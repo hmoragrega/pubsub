@@ -57,10 +57,3 @@ func (m *Message) SetAttribute(key, value string) {
 	}
 	m.Attributes[key] = value
 }
-
-func (m *Message) GetAttribute(key string) string {
-	if m.Attributes == nil {
-		return ""
-	}
-	return m.Attributes[key]
-}

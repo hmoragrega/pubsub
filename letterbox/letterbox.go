@@ -96,16 +96,18 @@ func (x *Letterbox) ServerHandler(handler func(context.Context, *pubsub.Message)
 
 // Response sends a response to a request.
 func (x *Letterbox) Response(ctx context.Context, request, response *pubsub.Message) error {
-	topic := request.GetAttribute(responseTopicAttribute)
-	if topic == "" {
+	topic, ok := request.Attributes[responseTopicAttribute]
+	if !ok {
 		return fmt.Errorf("missing response topic in request")
 	}
-	requestID := request.GetAttribute(requestIDAttribute)
-	if requestID == "" {
+	requestID, ok := request.Attributes[requestIDAttribute]
+	if !ok {
 		return fmt.Errorf("missing request ID")
 	}
-
-	requestedAt := request.GetAttribute(requestedAtAttribute)
+	requestedAt, ok := request.Attributes[requestedAtAttribute]
+	if !ok {
+		return fmt.Errorf("missing request time")
+	}
 
 	response.SetAttribute(requestIDAttribute, requestID)
 	response.SetAttribute(requestedAtAttribute, requestedAt)
@@ -118,14 +120,19 @@ func (x *Letterbox) Response(ctx context.Context, request, response *pubsub.Mess
 
 // HandleMessage is the message handler for the responses
 func (x *Letterbox) HandleMessage(_ context.Context, response *pubsub.Message) error {
-	requestID := response.GetAttribute(requestIDAttribute)
-	if requestID == "" {
+	requestID, ok := response.Attributes[requestIDAttribute]
+	if !ok {
 		return fmt.Errorf("missing request ID")
 	}
 
-	var requestedAt time.Time
-	if t := response.GetAttribute(requestedAtAttribute); t != "" {
-		requestedAt, _ = time.Parse(time.RFC3339Nano, t)
+	t := response.Attributes[requestedAtAttribute]
+	if !ok {
+		return fmt.Errorf("missing request ID")
+	}
+
+	requestedAt, err := time.Parse(time.RFC3339Nano, t)
+	if err != nil {
+		return fmt.Errorf("cannot parse requested at date")
 	}
 
 	r := &Response{

@@ -34,6 +34,11 @@ var (
 
 var _ pubsub.Subscriber = (*Subscriber)(nil)
 
+type ackStrategy interface {
+	Ack(ctx context.Context, msg *message) error
+	Close(ctx context.Context) error
+}
+
 type AckConfig struct {
 	// Timeout for the acknowledgements request.
 	// No timeout by default.
@@ -231,7 +236,12 @@ func (s *Subscriber) ack(_ context.Context, msg *message) error {
 		return fmt.Errorf("%w", ErrSubscriberStopped)
 	}
 
-	return s.ackStrategy.Ack(context.Background(), msg)
+	err := s.ackStrategy.Ack(context.Background(), msg)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrAcknowledgement, err)
+	}
+
+	return nil
 }
 
 func (s *Subscriber) isRunning() bool {

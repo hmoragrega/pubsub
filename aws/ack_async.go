@@ -11,38 +11,6 @@ import (
 	"github.com/hashicorp/go-multierror"
 )
 
-type ackStrategy interface {
-	Ack(ctx context.Context, msg *message) error
-	Close(ctx context.Context) error
-}
-
-type syncAck struct {
-	sqs      sqsSvc
-	queueURL string
-}
-
-func newSyncAck(svc sqsSvc, queueURL string) *syncAck {
-	return &syncAck{
-		sqs:      svc,
-		queueURL: queueURL,
-	}
-}
-
-func (s *syncAck) Ack(ctx context.Context, msg *message) error {
-	_, err := s.sqs.DeleteMessageWithContext(ctx, &sqs.DeleteMessageInput{
-		ReceiptHandle: msg.sqsReceiptHandle,
-		QueueUrl:      &s.queueURL,
-	})
-	if err != nil {
-		return fmt.Errorf("%w: %v", ErrAcknowledgement, err)
-	}
-	return nil
-}
-
-func (s *syncAck) Close(_ context.Context) error {
-	return nil
-}
-
 type asyncAck struct {
 	sqs      sqsSvc
 	queueURL string
