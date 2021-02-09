@@ -386,8 +386,8 @@ func TestSubscriberAsyncAck(t *testing.T) {
 			}
 		},
 		DeleteMessageBatchFunc: func(input *sqs.DeleteMessageBatchInput) (*sqs.DeleteMessageBatchOutput, error) {
-			ackOperations <- struct{}{}
 			r := <-deleteBatchReturns
+			ackOperations <- struct{}{}
 			return r.out, r.err
 		},
 	}
@@ -446,13 +446,16 @@ func TestSubscriberAsyncAck(t *testing.T) {
 		if err != nil {
 			t.Fatalf("no error is expected consuming the messages, got :%v", err)
 		}
-		if i == 3 {
+		if i == batchSize {
 			// give time for the first ack operation
 			// before requesting the last message ack
 			<-ackOperations
+			// even after ack, we cannot be sure the error
+			// will be propagated upstream in time.
+			time.Sleep(50 * time.Millisecond)
 		}
 		err = m.Ack(ctx)
-		if i < 3 {
+		if i < batchSize {
 			if err != nil {
 				t.Fatalf("no error should be reported until the first batch is acked, got :%v", err)
 			}
