@@ -184,7 +184,7 @@ func TestRouter_Run(t *testing.T) {
 			return nil
 		}
 		router := pubsub.Router{
-			Unmarshaler: pubsub.UnmarshalerFunc(func(message pubsub.ReceivedMessage) (*pubsub.Message, error) {
+			Unmarshaller: pubsub.UnmarshallerFunc(func(message pubsub.ReceivedMessage) (*pubsub.Message, error) {
 				return nil, nil
 			}),
 			OnReceive: func(_ context.Context, topic string, message pubsub.ReceivedMessage, err error) error {

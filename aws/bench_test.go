@@ -43,7 +43,7 @@ func TestBench(t *testing.T) {
 				topic: topicARN,
 			},
 		},
-		Marshaler: marshaller,
+		Marshaller: marshaller,
 	}
 
 	if err := publishMessages(publisher, topic, messagesCount, messageSize); err != nil {
@@ -64,7 +64,7 @@ func TestBench(t *testing.T) {
 	wg.Add(1)
 
 	router := pubsub.Router{
-		Unmarshaler: marshaller,
+		Unmarshaller: marshaller,
 		OnAck: func(_ context.Context, _ string, _ pubsub.ReceivedMessage, err error) error {
 			counter.Add(1)
 			if counter.Count() == uint64(messagesCount) {

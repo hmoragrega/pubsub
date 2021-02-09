@@ -30,8 +30,8 @@ type Checkpoint func(ctx context.Context, topic string, msg ReceivedMessage, err
 
 // Router groups consumers and runs them together.
 type Router struct {
-	// Message unmarshaler
-	Unmarshaler Unmarshaler
+	// Message unmarshaller
+	Unmarshaller Unmarshaller
 
 	// DisableAutoAck disables automatic acknowledgement of the
 	// messages. The handler will be responsible for it.
@@ -210,7 +210,7 @@ func (r *Router) consume(ctx context.Context, c *consumer) error {
 			continue
 		}
 
-		message, err := r.Unmarshaler.Unmarshal(msg)
+		message, err := r.Unmarshaller.Unmarshal(msg)
 		if err := r.check(ctx, r.OnUnmarshal, c, msg, err); err != nil {
 			return err
 		}

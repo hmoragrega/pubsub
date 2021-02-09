@@ -2,14 +2,14 @@ package pubsub
 
 import (
 	"context"
-	"errors"
+	"fmt"
 )
 
 type EnvelopePublisher interface {
 	Publish(ctx context.Context, topic string, envelope Envelope) error
 }
 
-type Marshaler interface {
+type Marshaller interface {
 	// Marshal the contents of the message.
 	Marshal(data interface{}) (payload []byte, version string, err error)
 }
@@ -30,18 +30,14 @@ type Envelope struct {
 // Publisher can publish a message to the
 // appropriate publisher based on the topic.
 type Publisher struct {
-	Publisher EnvelopePublisher
-	Marshaler Marshaler
+	Publisher  EnvelopePublisher
+	Marshaller Marshaller
 }
 
 func (p *Publisher) Publish(ctx context.Context, topic string, message Message) error {
-	if message.Name == "" {
-		return errors.New("missing message name")
-	}
-
-	body, version, err := p.Marshaler.Marshal(message.Data)
+	body, version, err := p.Marshaller.Marshal(message.Data)
 	if err != nil {
-		return err
+		return fmt.Errorf("marshaller error: %v", err)
 	}
 
 	id := message.ID

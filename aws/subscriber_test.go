@@ -216,14 +216,14 @@ func TestPubSubIntegration(t *testing.T) {
 	defer cancel()
 
 	var (
-		testTopic     = fmt.Sprintf("aws-pubsub-integration-%d", rand.Int31())
-		testQueue     = fmt.Sprintf("%s-queue", testTopic)
-		eventName     = "test-struct"
-		testAttribute = "test-attribute"
-		topicARN      = createTestTopic(ctx, t, testTopic)
-		queueURL      = createTestQueue(ctx, t, testQueue)
-		queueARN      = MustGetResource(GetQueueARN(ctx, sqsTest, queueURL))
-		jsonMarshaler pubsub.JSONMarshaller
+		testTopic      = fmt.Sprintf("aws-pubsub-integration-%d", rand.Int31())
+		testQueue      = fmt.Sprintf("%s-queue", testTopic)
+		eventName      = "test-struct"
+		testAttribute  = "test-attribute"
+		topicARN       = createTestTopic(ctx, t, testTopic)
+		queueURL       = createTestQueue(ctx, t, testQueue)
+		queueARN       = MustGetResource(GetQueueARN(ctx, sqsTest, queueURL))
+		jsonMarshaller pubsub.JSONMarshaller
 	)
 
 	subscribeTestTopic(ctx, t, topicARN, queueARN)
@@ -234,10 +234,10 @@ func TestPubSubIntegration(t *testing.T) {
 		Publisher: &Publisher{SNS: snsTest, TopicARNs: map[string]string{
 			testTopic: topicARN,
 		}},
-		Marshaler: &jsonMarshaler,
+		Marshaller: &jsonMarshaller,
 	}
 
-	jsonMarshaler.Register(eventName, &testStruct{})
+	jsonMarshaller.Register(eventName, &testStruct{})
 	entity := &testStruct{
 		ID:   123,
 		Name: "John Doe",
@@ -285,8 +285,8 @@ func TestPubSubIntegration(t *testing.T) {
 
 	messageHandled := make(chan struct{})
 	router := pubsub.Router{
-		Unmarshaler: &jsonMarshaler,
-		StopTimeout: time.Second,
+		Unmarshaller: &jsonMarshaller,
+		StopTimeout:  time.Second,
 		OnReceive: func(_ context.Context, _ string, _ pubsub.ReceivedMessage, err error) error {
 			return err
 		},

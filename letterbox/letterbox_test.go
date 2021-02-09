@@ -76,7 +76,7 @@ func TestLetterbox(t *testing.T) {
 		mathSvcQueueARN     = aws.MustGetResource(aws.GetQueueARN(ctx, sqsTest, mathSvcQueueURL))
 		instanceSub         = aws.MustGetResource(aws.Subscribe(ctx, snsTest, instanceTopicARN, instanceQueueARN))
 		mathSvcSub          = aws.MustGetResource(aws.Subscribe(ctx, snsTest, mathServiceTopicARN, mathSvcQueueARN))
-		jsonMarshaler       pubsub.JSONMarshaller
+		jsonMarshaller      pubsub.JSONMarshaller
 	)
 	aws.Must(aws.CreateForwardingPolicy(ctx, sqsTest, instanceQueueURL, instanceQueueARN, instanceTopicARN))
 	aws.Must(aws.CreateForwardingPolicy(ctx, sqsTest, mathSvcQueueURL, mathSvcQueueARN, mathServiceTopicARN))
@@ -97,7 +97,7 @@ func TestLetterbox(t *testing.T) {
 			TopicARNs: map[string]string{
 				mathSvcTopic: mathServiceTopicARN,
 			}},
-		Marshaler: &jsonMarshaler,
+		Marshaller: &jsonMarshaller,
 	}
 
 	var (
@@ -107,10 +107,10 @@ func TestLetterbox(t *testing.T) {
 		subtractResponseEventName = "subtract-response"
 	)
 
-	jsonMarshaler.Register(sumRequestEventName, &sumRequest{})
-	jsonMarshaler.Register(sumResponseEventName, &sumResponse{})
-	jsonMarshaler.Register(subtractRequestEventName, &subtractRequest{})
-	jsonMarshaler.Register(subtractResponseEventName, &subtractResponse{})
+	jsonMarshaller.Register(sumRequestEventName, &sumRequest{})
+	jsonMarshaller.Register(sumResponseEventName, &sumResponse{})
+	jsonMarshaller.Register(subtractRequestEventName, &subtractRequest{})
+	jsonMarshaller.Register(subtractResponseEventName, &subtractResponse{})
 
 	letterbox := &Letterbox{
 		Publisher: publisher,
@@ -118,7 +118,7 @@ func TestLetterbox(t *testing.T) {
 	}
 
 	router := pubsub.Router{
-		Unmarshaler: &jsonMarshaler,
+		Unmarshaller: &jsonMarshaller,
 	}
 
 	err := router.RegisterHandler(
