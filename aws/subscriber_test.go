@@ -15,6 +15,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sns"
 	"github.com/aws/aws-sdk-go/service/sqs"
@@ -219,6 +220,118 @@ func TestPubSubIntegration(t *testing.T) {
 	}
 }
 
+func TestSubscriberAsyncAck(t *testing.T) {
+	var (
+		batchSize = 3
+		messages  = 4
+	)
+
+	type receiveResult struct {
+		out *sqs.ReceiveMessageOutput
+		err error
+	}
+	type deleteBatchResult struct {
+		out *sqs.DeleteMessageBatchOutput
+		err error
+	}
+	var (
+		receiveReturns     = make(chan receiveResult, 1)
+		deleteBatchReturns = make(chan deleteBatchResult, 2)
+		ackOperations 	   = make(chan struct{}, 2)
+	)
+	sqsSvc := &sqsStub{
+		ReceiveMessageWithContextFunc: func(ctx aws.Context, _ *sqs.ReceiveMessageInput, _ ...request.Option) (*sqs.ReceiveMessageOutput, error) {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case r := <-receiveReturns:
+				return r.out, r.err
+			}
+		},
+		DeleteMessageBatchFunc: func(input *sqs.DeleteMessageBatchInput) (*sqs.DeleteMessageBatchOutput, error) {
+			ackOperations <- struct{}{}
+			r := <-deleteBatchReturns
+			return r.out, r.err
+		},
+	}
+
+	mc := &Subscriber{
+		SQS:      sqsSvc,
+		QueueURL: "foo",
+		AckConfig: AckConfig{
+			BatchSize: batchSize,
+		},
+	}
+
+	input := make([]*sqs.Message, messages)
+	for i := 0; i < messages; i++ {
+		input[i] = &sqs.Message{
+			Body: aws.String("body"),
+			MessageAttributes: map[string]*sqs.MessageAttributeValue{
+				idAttributeKey:      {StringValue: aws.String(fmt.Sprintf("id-%d", i))},
+				versionAttributeKey: {StringValue: aws.String(fmt.Sprintf("version"))},
+				nameAttributeKey:    {StringValue: aws.String(fmt.Sprintf("name"))},
+			},
+			ReceiptHandle: aws.String(fmt.Sprintf("handle-%d", i)),
+			MessageId:     aws.String("message-id"),
+		}
+	}
+	// Receive 4 messages
+	receiveReturns <- receiveResult{out: &sqs.ReceiveMessageOutput{Messages: input}}
+
+	// Fail to ack two messages, the errors should
+	// be reported on first ack after the batch flush.
+	deleteBatchReturns <- deleteBatchResult{
+		out: &sqs.DeleteMessageBatchOutput{
+			Failed: []*sqs.BatchResultErrorEntry{{
+				Id:      aws.String("id-0"),
+				Code:    aws.String("ERR-0"),
+				Message: aws.String("error zero"),
+			}, {
+				Id:      aws.String("id-2"),
+				Code:    aws.String("ERR-2"),
+				Message: aws.String("error two"),
+			}},
+		},
+	}
+
+	// Fail with an error for the last message, this must
+	// be reported on closing the subscription.
+	deleteBatchReturns <- deleteBatchResult{err: errors.New("request failed")}
+
+	if err := mc.Subscribe(); err != nil {
+		t.Fatal("cannot subscribe", err)
+	}
+
+	ctx := context.Background()
+	for i := 0; i < batchSize+1; i++ {
+		m, err := mc.Next(ctx)
+		if err != nil {
+			t.Fatalf("no error is expected consuming the messages, got :%v", err)
+		}
+		if i == 3 {
+			// give time for the first ack operation
+			// before requesting the last message ack
+			<-ackOperations
+		}
+		err = m.Ack(ctx)
+		if i < 3 {
+			if err != nil {
+				t.Fatalf("no error should be reported until the first batch is acked, got :%v", err)
+			}
+			continue
+		}
+		if !errors.Is(err, ErrAcknowledgement) {
+			t.Fatal("expected ack error on the first messages after the first batch")
+		}
+	}
+
+	err := mc.Stop(ctx)
+	if !errors.Is(err, ErrAcknowledgement) {
+		t.Fatal("expected ack error stopping the subscription")
+	}
+}
+
 func createTestQueue(ctx context.Context, t *testing.T, queueName string) string {
 	queueURL := MustGetResource(CreateQueue(ctx, sqsTest, queueName))
 	t.Cleanup(func() {
@@ -251,4 +364,22 @@ func createTestTopic(ctx context.Context, t *testing.T, topicName string) string
 		}
 	})
 	return queueURL
+}
+
+type sqsStub struct {
+	ReceiveMessageWithContextFunc func(ctx aws.Context, input *sqs.ReceiveMessageInput, opts ...request.Option) (*sqs.ReceiveMessageOutput, error)
+	DeleteMessageBatchFunc        func(input *sqs.DeleteMessageBatchInput) (*sqs.DeleteMessageBatchOutput, error)
+	DeleteMessageWithContextFunc  func(ctx aws.Context, input *sqs.DeleteMessageInput, opts ...request.Option) (*sqs.DeleteMessageOutput, error)
+}
+
+func (s *sqsStub) ReceiveMessageWithContext(ctx aws.Context, input *sqs.ReceiveMessageInput, opts ...request.Option) (*sqs.ReceiveMessageOutput, error) {
+	return s.ReceiveMessageWithContextFunc(ctx, input, opts...)
+}
+
+func (s *sqsStub) DeleteMessageBatch(input *sqs.DeleteMessageBatchInput) (*sqs.DeleteMessageBatchOutput, error) {
+	return s.DeleteMessageBatchFunc(input)
+}
+
+func (s *sqsStub) DeleteMessageWithContext(ctx aws.Context, input *sqs.DeleteMessageInput, opts ...request.Option) (*sqs.DeleteMessageOutput, error) {
+	return s.DeleteMessageWithContext(ctx, input, opts...)
 }

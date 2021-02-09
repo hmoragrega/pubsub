@@ -20,11 +20,11 @@ type ackStrategy interface {
 }
 
 type syncAck struct {
-	sqs      *sqs.SQS
+	sqs      sqsSvc
 	queueURL string
 }
 
-func newSyncAck(svc *sqs.SQS, queueURL string) *syncAck {
+func newSyncAck(svc sqsSvc, queueURL string) *syncAck {
 	return &syncAck{
 		sqs:      svc,
 		queueURL: queueURL,
@@ -51,7 +51,7 @@ func (s *syncAck) Close(_ context.Context) error {
 }
 
 type asyncAck struct {
-	sqs      *sqs.SQS
+	sqs      sqsSvc
 	queueURL string
 	cfg      AckConfig
 
@@ -62,7 +62,7 @@ type asyncAck struct {
 	pending    sync.WaitGroup
 }
 
-func newAsyncAck(svc *sqs.SQS, queueURL string, cfg AckConfig, poolConfig workers.Config) *asyncAck {
+func newAsyncAck(svc sqsSvc, queueURL string, cfg AckConfig, poolConfig workers.Config) *asyncAck {
 	if cfg.BatchSize <= 0 {
 		cfg.BatchSize = 1
 	}
@@ -108,9 +108,9 @@ func (s *asyncAck) Start() error {
 
 func (s *asyncAck) Close(ctx context.Context) (err error) {
 	go func() {
-		// wait until all messages have been queue
+		// wait until all messages have been queued
 		s.pending.Wait()
-		// close the message so all workers stop.
+		// close the message so all workers stop eventually
 		close(s.messages)
 		// close the pool
 		if err := s.pool.Close(ctx); err != nil {

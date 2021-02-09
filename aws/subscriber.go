@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/service/sqs"
 	"github.com/hmoragrega/pubsub"
 	"github.com/hmoragrega/workers"
@@ -60,8 +61,8 @@ type AckConfig struct {
 
 // Subscriber for AWS SQS.
 type Subscriber struct {
-	// SQS Service. If not given the default client will be used.
-	SQS *sqs.SQS
+	// SQS Service.
+	SQS sqsSvc
 
 	// QueueURL for the SQS queue.
 	QueueURL string
@@ -241,4 +242,10 @@ func (b *atomicBool) setTrue() {
 
 func (b *atomicBool) setFalse() {
 	atomic.StoreInt32((*int32)(b), 0)
+}
+
+type sqsSvc interface {
+	ReceiveMessageWithContext(ctx aws.Context, input *sqs.ReceiveMessageInput, opts ...request.Option) (*sqs.ReceiveMessageOutput, error)
+	DeleteMessageBatch(input *sqs.DeleteMessageBatchInput) (*sqs.DeleteMessageBatchOutput, error)
+	DeleteMessageWithContext(ctx aws.Context, input *sqs.DeleteMessageInput, opts ...request.Option) (*sqs.DeleteMessageOutput, error)
 }
