@@ -23,7 +23,7 @@ func TestBench(t *testing.T) {
 	defer cancel()
 
 	var (
-		messagesCount, _ = strconv.Atoi(env.GetEnvOrDefault("BENCH_MESSAGES", "10000"))
+		messagesCount, _ = strconv.Atoi(env.GetEnvOrDefault("BENCH_MESSAGES", "1000"))
 		workersCount, _  = strconv.Atoi(env.GetEnvOrDefault("BENCH_WORKERS", "12"))
 		asyncBatch, _    = strconv.Atoi(env.GetEnvOrDefault("BENCH_ASYNC_BATCH", "10"))
 		messageSize, _   = strconv.Atoi(env.GetEnvOrDefault("BENCH_MESSAGE_SIZE", "10"))

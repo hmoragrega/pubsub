@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -55,9 +54,6 @@ type asyncAck struct {
 	sqs      *sqs.SQS
 	queueURL string
 	cfg      AckConfig
-
-	// TODO delete
-	counter uint32
 
 	pool       *workers.Pool
 	poolConfig workers.Config
@@ -111,10 +107,6 @@ func (s *asyncAck) Start() error {
 }
 
 func (s *asyncAck) Close(ctx context.Context) (err error) {
-	defer func() {
-		println("acked!", atomic.LoadUint32(&s.counter))
-	}()
-
 	go func() {
 		// wait until all messages have been queue
 		s.pending.Wait()
@@ -170,8 +162,6 @@ func (s *asyncAck) New() workers.Job {
 		if c < minimum {
 			return
 		}
-		atomic.AddUint32(&s.counter, uint32(c))
-
 		s.batchAck(input, batch)
 
 		// reset the batch
