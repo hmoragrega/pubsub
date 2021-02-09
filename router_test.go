@@ -61,8 +61,8 @@ func TestRouter_Run(t *testing.T) {
 			if err := router.RegisterHandler(strconv.Itoa(i), s, handlerDummy); err != nil {
 				t.Fatalf("cannot register handler %d: %v", i, err)
 			}
-			s.SubscribeFunc = func() error {
-				return <-results
+			s.SubscribeFunc = func() (<-chan pubsub.Next, error) {
+				return nil, <-results
 			}
 			s.StopFunc = func(_ context.Context) error {
 				atomic.AddUint32(&stopped, 1)
@@ -92,14 +92,14 @@ func TestRouter_Run(t *testing.T) {
 			if err := router.RegisterHandler(strconv.Itoa(i), s, handlerDummy); err != nil {
 				t.Fatalf("cannot register handler %d: %v", i, err)
 			}
-			s.SubscribeFunc = func() error {
-				return nil
-			}
-			s.NextFunc = func(ctx context.Context) (pubsub.ReceivedMessage, error) {
+			s.SubscribeFunc = func() (<-chan pubsub.Next, error) {
+				next := make(chan pubsub.Next, 1)
 				if i == 2 {
-					return nil, errorDummy
+					next <- pubsub.Next{Err: errorDummy}
+				} else {
+					next <- pubsub.Next{Err: context.Canceled}
 				}
-				return nil, context.Canceled
+				return next, nil
 			}
 			s.StopFunc = func(_ context.Context) error {
 				atomic.AddUint32(&stopped, 1)
@@ -134,13 +134,9 @@ func TestRouter_Run(t *testing.T) {
 			if err := router.RegisterHandler(strconv.Itoa(i), s, handlerDummy); err != nil {
 				t.Fatalf("cannot register handler %d: %v", i, err)
 			}
-			s.SubscribeFunc = func() error {
-				return nil
-			}
-			s.NextFunc = func(ctx context.Context) (pubsub.ReceivedMessage, error) {
+			s.SubscribeFunc = func() (<-chan pubsub.Next, error) {
 				running <- struct{}{}
-				<-ctx.Done()
-				return nil, ctx.Err()
+				return nil, nil
 			}
 			s.StopFunc = func(_ context.Context) error {
 				return <-results
@@ -166,8 +162,11 @@ func TestRouter_Run(t *testing.T) {
 		subscriberTopic := "foo"
 
 		var checkpointsCalled int
+
+		ctx, cancel := context.WithCancel(context.Background())
 		msg := stubs.ReceivedMessageStub{
 			AckFunc: func(ctx context.Context) error {
+				cancel()
 				return nil
 			},
 		}
@@ -202,19 +201,12 @@ func TestRouter_Run(t *testing.T) {
 			},
 		}
 
-		var count int
 		s := &stubs.SubscriberStub{
-			SubscribeFunc: func() error {
-				return nil
-			},
-			NextFunc: func(ctx context.Context) (pubsub.ReceivedMessage, error) {
-				// return the message stub on the first iteration
-				// and stop the consumer in the next one.
-				count++
-				if count == 1 {
-					return &msg, nil
-				}
-				return nil, context.Canceled
+			SubscribeFunc: func() (<-chan pubsub.Next, error) {
+				next := make(chan pubsub.Next, 1)
+				next <- pubsub.Next{Message: &msg}
+
+				return next, nil
 			},
 			StopFunc: func(ctx context.Context) error {
 				return nil

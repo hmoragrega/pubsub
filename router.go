@@ -20,6 +20,7 @@ type consumer struct {
 	subscriber Subscriber
 	handler    MessageHandler
 	topic      string
+	next       <-chan Next
 }
 
 // Checkpoints are optional hooks executed during the message live cycle,
@@ -127,12 +128,13 @@ func (r *Router) subscribe(consumers map[string]*consumer) ([]*consumer, error) 
 	for _, c := range consumers {
 		c := c
 		g.Go(func() error {
-			subscribeErr := c.subscriber.Subscribe()
+			next, subscribeErr := c.subscriber.Subscribe()
 			if subscribeErr != nil {
 				subscribeErr = fmt.Errorf("subscribe to topic %s failed: %w", c.topic, subscribeErr)
 			}
 
 			if subscribeErr == nil {
+				c.next = next
 				mx.Lock()
 				started = append(started, c)
 				mx.Unlock()
@@ -192,11 +194,15 @@ func (r *Router) run(ctx context.Context, consumers []*consumer) (err error) {
 }
 
 func (r *Router) consume(ctx context.Context, c *consumer) error {
+	var next Next
 	for {
-		msg, err := c.subscriber.Next(ctx)
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		select {
+		case <-ctx.Done():
 			return nil
+		case next = <-c.next:
 		}
+
+		msg, err := next.Message, next.Err
 		if err := r.check(ctx, r.OnReceive, c, msg, err); err != nil {
 			return err
 		}

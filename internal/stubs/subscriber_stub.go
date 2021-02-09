@@ -7,17 +7,12 @@ import (
 )
 
 type SubscriberStub struct {
-	SubscribeFunc func() error
-	NextFunc      func(ctx context.Context) (pubsub.ReceivedMessage, error)
+	SubscribeFunc func() (<-chan pubsub.Next, error)
 	StopFunc      func(ctx context.Context) error
 }
 
-func (s *SubscriberStub) Subscribe() error {
+func (s *SubscriberStub) Subscribe() (<-chan pubsub.Next, error) {
 	return s.SubscribeFunc()
-}
-
-func (s *SubscriberStub) Next(ctx context.Context) (pubsub.ReceivedMessage, error) {
-	return s.NextFunc(ctx)
 }
 
 func (s *SubscriberStub) Stop(ctx context.Context) error {
