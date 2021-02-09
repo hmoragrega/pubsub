@@ -26,18 +26,19 @@ test: up integration
 
 integration:
 	@mkdir -p coverage
-	@go test -race -v -tags=integration -coverprofile=./coverage/integration.cov ./...
+	@go test -race -v -tags=integration -coverpkg=./... -coverprofile=./coverage/integration.cov ./...
 
 .PHONY: clean
 clean:
+	@rm -rf $(COVERAGE_FILES)
 	@rm -rf $(COVERAGE_FILE)
 
 .PHONY: coverage
-coverage: test coverage-merge
+coverage: clean test coverage-merge
 	@go tool cover -func=$(COVERAGE_FILE)
 
 .PHONY: coverage-html
-coverage-html: test coverage-merge
+coverage-html: clean test coverage-merge
 	@go tool cover -html=$(COVERAGE_FILE)
 
 .PHONY: coverage-merge

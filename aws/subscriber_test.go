@@ -237,7 +237,7 @@ func TestSubscriberAsyncAck(t *testing.T) {
 	var (
 		receiveReturns     = make(chan receiveResult, 1)
 		deleteBatchReturns = make(chan deleteBatchResult, 2)
-		ackOperations 	   = make(chan struct{}, 2)
+		ackOperations      = make(chan struct{}, 2)
 	)
 	sqsSvc := &sqsStub{
 		ReceiveMessageWithContextFunc: func(ctx aws.Context, _ *sqs.ReceiveMessageInput, _ ...request.Option) (*sqs.ReceiveMessageOutput, error) {

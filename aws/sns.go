@@ -8,13 +8,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/sns"
 )
 
-func MustSNS(svc *sns.SNS, err error) *sns.SNS {
-	if err != nil {
-		panic(err)
-	}
-	return svc
-}
-
 func CreateTopic(ctx context.Context, svc *sns.SNS, topicName string) (string, error) {
 	out, err := svc.CreateTopicWithContext(ctx, &sns.CreateTopicInput{
 		Name: &topicName,

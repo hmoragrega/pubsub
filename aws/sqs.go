@@ -32,19 +32,6 @@ func GetQueueARN(ctx context.Context, svc *sqs.SQS, queueURL string) (string, er
 	return *out.Attributes["QueueArn"], nil
 }
 
-// PurgeQueue note: there is a cool down period of 60s before
-// the queue can be purged again.
-func PurgeQueue(ctx context.Context, svc *sqs.SQS, queueURL string) error {
-	_, err := svc.PurgeQueueWithContext(ctx, &sqs.PurgeQueueInput{
-		QueueUrl: &queueURL,
-	})
-	if err != nil {
-		return fmt.Errorf("cannot purge ARN %s: %v", queueURL, err)
-	}
-
-	return nil
-}
-
 func DeleteQueue(ctx context.Context, svc *sqs.SQS, queueURL string) error {
 	_, err := svc.DeleteQueueWithContext(ctx, &sqs.DeleteQueueInput{
 		QueueUrl: aws.String(queueURL),

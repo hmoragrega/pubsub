@@ -6,7 +6,7 @@ import (
 	"reflect"
 )
 
-const jsonMarshallerVersion0x01 = "json-marshaller:0x01"
+const jsonMarshallerVersion0x01 = "json:0x01"
 
 // JSONMarshaller uses the standards json library
 // to encode and decode message.
