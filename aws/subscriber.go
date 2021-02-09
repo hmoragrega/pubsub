@@ -5,19 +5,27 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/service/sqs"
 	"github.com/hmoragrega/pubsub"
-	"github.com/hmoragrega/workers"
+)
+
+type status uint8
+
+const (
+	started status = iota + 1
+	stopped
 )
 
 var (
 	ErrSubscriberStopped = errors.New("subscriber stopped")
 	ErrAcknowledgement   = errors.New("cannot ack message")
+	ErrAlreadyStarted    = errors.New("already started")
+	ErrAlreadyStopped    = errors.New("already stopped")
+	ErrMissingConfig     = errors.New("missing configuration")
 
 	maxNumberOfMessages int64 = 10
 	waitTimeSeconds     int64 = 20
@@ -73,106 +81,111 @@ type Subscriber struct {
 	// AckConfig configuration the acknowledgements behaviour
 	AckConfig AckConfig
 
-	pool        *workers.Pool
 	results     chan consumeResult
 	ackStrategy ackStrategy
-	stopped     atomicBool
-	once        sync.Once
+	stopped     chan struct{}
+	cancel      func()
+	status      status
+	statusMx    sync.RWMutex
 }
 
 func (s *Subscriber) Subscribe() error {
-	if err := s.init(); err != nil {
-		return err
+	s.statusMx.Lock()
+	defer s.statusMx.Unlock()
+
+	if s.status >= started {
+		return ErrAlreadyStarted
 	}
-	if err := s.pool.Start(workers.JobFunc(s.consume)); err != nil {
-		return err
+	if s.SQS == nil {
+		return fmt.Errorf("%w: SQS service not set", ErrMissingConfig)
+	}
+	if s.QueueURL == "" {
+		return fmt.Errorf("%w: QueueURL cannot be empty", ErrMissingConfig)
 	}
 
-	return s.ackStrategy.Start()
+	if s.AckConfig.Async || s.AckConfig.BatchSize > 0 {
+		s.ackStrategy = newAsyncAck(s.SQS, s.QueueURL, s.AckConfig)
+	} else {
+		s.ackStrategy = newSyncAck(s.SQS, s.QueueURL)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	s.status = started
+	s.cancel = cancel
+	s.results = make(chan consumeResult, maxNumberOfMessages)
+	s.stopped = make(chan struct{})
+
+	go s.consume(ctx)
+
+	return nil
 }
 
 // Next consumes the next batch of messages in the queue and
 // puts them in the messages channel.
 func (s *Subscriber) Next(ctx context.Context) (pubsub.ReceivedMessage, error) {
-	if s.stopped.isTrue() {
+	if !s.isRunning() {
 		return nil, fmt.Errorf("%w", ErrSubscriberStopped)
 	}
 
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
-	case res, ok := <-s.results:
-		if !ok {
-			return nil, ErrSubscriberStopped
-		}
+	case res := <-s.results:
 		return res.message, res.err
 	}
 }
 
 // Stop stops consuming messages.
 func (s *Subscriber) Stop(ctx context.Context) (err error) {
-	s.stopped.setTrue()
+	s.statusMx.Lock()
+	defer s.statusMx.Unlock()
 
-	if err = s.pool.Close(ctx); err != nil {
-		return err
+	if s.status == stopped {
+		return ErrAlreadyStopped
 	}
 
-	close(s.results)
+	s.status = stopped
+	s.cancel()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-s.stopped:
+	}
 
 	return s.ackStrategy.Close(ctx)
 }
 
-func (s *Subscriber) init() (err error) {
-	s.once.Do(func() {
-		if s.SQS == nil {
-			err = fmt.Errorf("SQS service not set")
-			return
-		}
-		if s.QueueURL == "" {
-			err = fmt.Errorf("QueueURL cannot be empty")
-			return
-		}
-		s.results = make(chan consumeResult, maxNumberOfMessages)
-		s.pool = workers.New()
-
-		if s.AckConfig.Async || s.AckConfig.BatchSize > 0 {
-			s.ackStrategy = newAsyncAck(s.SQS, s.QueueURL, s.AckConfig)
-		} else {
-			s.ackStrategy = newSyncAck(s.SQS, s.QueueURL)
-		}
-	})
-
-	return err
-}
-
 // consumes the next batch of messages in
 // the queue and puts them in the messages channel.
-func (s *Subscriber) consume(ctx context.Context) error {
-	out, err := s.SQS.ReceiveMessageWithContext(ctx, &sqs.ReceiveMessageInput{
-		QueueUrl:              &s.QueueURL,
-		MaxNumberOfMessages:   &maxNumberOfMessages,
-		WaitTimeSeconds:       &waitTimeSeconds,
-		AttributeNames:        allAttributes,
-		MessageAttributeNames: allAttributes,
-	})
-	if err != nil {
-		// aws/http library does not return
-		// a wrapped context.Canceled
-		if ctx.Err() != nil {
-			return ctx.Err()
+func (s *Subscriber) consume(ctx context.Context) {
+	defer close(s.stopped)
+
+	for {
+		out, err := s.SQS.ReceiveMessageWithContext(ctx, &sqs.ReceiveMessageInput{
+			QueueUrl:              &s.QueueURL,
+			MaxNumberOfMessages:   &maxNumberOfMessages,
+			WaitTimeSeconds:       &waitTimeSeconds,
+			AttributeNames:        allAttributes,
+			MessageAttributeNames: allAttributes,
+		})
+		if err != nil {
+			// aws/http library does not return
+			// a wrapped context.Canceled
+			if ctx.Err() != nil {
+				return
+			}
+			s.results <- consumeResult{err: err}
 		}
-		s.results <- consumeResult{err: err}
-		return err
+		messages, err := s.wrapMessages(out.Messages)
+		if err != nil {
+			s.results <- consumeResult{err: err}
+		}
+		for _, message := range messages {
+			s.results <- consumeResult{message: message}
+		}
 	}
-	messages, err := s.wrapMessages(out.Messages)
-	if err != nil {
-		s.results <- consumeResult{err: err}
-		return err
-	}
-	for _, message := range messages {
-		s.results <- consumeResult{message: message}
-	}
-	return nil
 }
 
 func (s *Subscriber) wrapMessages(in []*sqs.Message) (out []pubsub.ReceivedMessage, err error) {
@@ -214,31 +227,24 @@ func (s *Subscriber) wrapMessages(in []*sqs.Message) (out []pubsub.ReceivedMessa
 }
 
 func (s *Subscriber) ack(_ context.Context, msg *message) error {
-	if s.stopped.isTrue() {
+	if !s.isRunning() {
 		return fmt.Errorf("%w", ErrSubscriberStopped)
 	}
 
 	return s.ackStrategy.Ack(context.Background(), msg)
 }
 
+func (s *Subscriber) isRunning() bool {
+	s.statusMx.RLock()
+	defer s.statusMx.RUnlock()
+
+	return s.status == started
+}
+
 // ConsumeResult is the result of consuming messages from the queue.
 type consumeResult struct {
 	message pubsub.ReceivedMessage
 	err     error
-}
-
-type atomicBool int32
-
-func (b *atomicBool) isTrue() bool {
-	return atomic.LoadInt32((*int32)(b)) != 0
-}
-
-func (b *atomicBool) setTrue() {
-	atomic.StoreInt32((*int32)(b), 1)
-}
-
-func (b *atomicBool) setFalse() {
-	atomic.StoreInt32((*int32)(b), 0)
 }
 
 type sqsSvc interface {

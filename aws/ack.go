@@ -12,7 +12,6 @@ import (
 )
 
 type ackStrategy interface {
-	Start() error
 	Ack(ctx context.Context, msg *message) error
 	Close(ctx context.Context) error
 }
@@ -27,10 +26,6 @@ func newSyncAck(svc sqsSvc, queueURL string) *syncAck {
 		sqs:      svc,
 		queueURL: queueURL,
 	}
-}
-
-func (s *syncAck) Start() error {
-	return nil
 }
 
 func (s *syncAck) Ack(ctx context.Context, msg *message) error {
@@ -62,13 +57,15 @@ func newAsyncAck(svc sqsSvc, queueURL string, cfg AckConfig) *asyncAck {
 	if cfg.BatchSize <= 0 {
 		cfg.BatchSize = 1
 	}
-	return &asyncAck{
+	s := &asyncAck{
 		sqs:      svc,
 		queueURL: queueURL,
 		cfg:      cfg,
 		messages: make(chan *message, maxNumberOfMessages),
 		errors:   make(chan error, maxNumberOfMessages),
 	}
+	s.run()
+	return s
 }
 
 func (s *asyncAck) Ack(_ context.Context, msg *message) error {
@@ -87,7 +84,7 @@ func (s *asyncAck) Ack(_ context.Context, msg *message) error {
 	}
 }
 
-func (s *asyncAck) Start() error {
+func (s *asyncAck) run() {
 	var (
 		size   = s.cfg.BatchSize
 		every  = s.cfg.FlushEvery
@@ -129,6 +126,7 @@ func (s *asyncAck) Start() error {
 	}
 
 	go func() {
+		defer close(s.errors)
 		for {
 			select {
 			case <-tick:
@@ -137,12 +135,10 @@ func (s *asyncAck) Start() error {
 				if !ok {
 					// flush one last time
 					flush(1)
-					// the pool has been closed
+					// the pool has been stopped
 					if ticker != nil {
 						ticker.Stop()
 					}
-
-					close(s.errors)
 					return
 				}
 				add(m)
@@ -150,8 +146,6 @@ func (s *asyncAck) Start() error {
 			}
 		}
 	}()
-
-	return nil
 }
 
 func (s *asyncAck) Close(ctx context.Context) (err error) {

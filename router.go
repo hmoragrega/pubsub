@@ -11,8 +11,8 @@ import (
 )
 
 var (
-	errTopicAlreadyRegistered = errors.New("topic already registered")
-	errRouterAlreadyRunning   = errors.New("router already running")
+	ErrTopicAlreadyRegistered = errors.New("topic already registered")
+	ErrRouterAlreadyRunning   = errors.New("router already running")
 )
 
 // Consumer consumes messages from a single subscription.
@@ -66,11 +66,11 @@ func (r *Router) RegisterHandler(topic string, subscriber Subscriber, handler Me
 	defer r.mx.Unlock()
 
 	if r.running {
-		return errRouterAlreadyRunning
+		return ErrRouterAlreadyRunning
 	}
 	_, found := r.consumers[topic]
 	if found {
-		return fmt.Errorf("%w: %s", errTopicAlreadyRegistered, topic)
+		return fmt.Errorf("%w: %s", ErrTopicAlreadyRegistered, topic)
 	}
 
 	if r.consumers == nil {
@@ -249,7 +249,7 @@ func (r *Router) start() error {
 	defer r.mx.Unlock()
 
 	if r.running {
-		return errRouterAlreadyRunning
+		return ErrRouterAlreadyRunning
 	}
 
 	r.running = true
