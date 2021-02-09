@@ -55,24 +55,23 @@ type asyncAck struct {
 	queueURL string
 	cfg      AckConfig
 
-	pool       *workers.Pool
-	poolConfig workers.Config
-	messages   chan *message
-	errors     chan error
-	pending    sync.WaitGroup
+	pool     *workers.Pool
+	messages chan *message
+	errors   chan error
+	pending  sync.WaitGroup
 }
 
-func newAsyncAck(svc sqsSvc, queueURL string, cfg AckConfig, poolConfig workers.Config) *asyncAck {
+func newAsyncAck(svc sqsSvc, queueURL string, cfg AckConfig) *asyncAck {
 	if cfg.BatchSize <= 0 {
 		cfg.BatchSize = 1
 	}
 	return &asyncAck{
-		sqs:        svc,
-		queueURL:   queueURL,
-		cfg:        cfg,
-		poolConfig: poolConfig,
-		messages:   make(chan *message, maxNumberOfMessages),
-		errors:     make(chan error, maxNumberOfMessages),
+		sqs:      svc,
+		queueURL: queueURL,
+		cfg:      cfg,
+		pool:     workers.New(),
+		messages: make(chan *message, maxNumberOfMessages),
+		errors:   make(chan error, maxNumberOfMessages),
 	}
 }
 
@@ -93,29 +92,26 @@ func (s *asyncAck) Ack(_ context.Context, msg *message) error {
 }
 
 func (s *asyncAck) Start() error {
-	p, err := workers.NewWithConfig(s.poolConfig)
-	if err != nil {
-		return fmt.Errorf("cannot create ack pool: %w", err)
-	}
-	err = p.StartBuilder(s)
-	if err != nil {
+	if err := s.pool.StartBuilder(s); err != nil {
 		return fmt.Errorf("cannot start ack pool: %w", err)
 	}
-	s.pool = p
-
 	return nil
 }
 
 func (s *asyncAck) Close(ctx context.Context) (err error) {
+	closeResult := make(chan error, 1)
 	go func() {
 		// wait until all messages have been queued
 		s.pending.Wait()
 		// close the message so all workers stop eventually
 		close(s.messages)
-		// close the pool
+
 		if err := s.pool.Close(ctx); err != nil {
+			closeResult <- err
 			return
 		}
+		// the ack loop has stopped, there will be
+		// no more errors.
 		close(s.errors)
 	}()
 
@@ -123,6 +119,8 @@ func (s *asyncAck) Close(ctx context.Context) (err error) {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
+		case closeErr := <-closeResult:
+			err = multierror.Append(err, closeErr)
 		case ackError, ok := <-s.errors:
 			if !ok {
 				return err

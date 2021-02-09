@@ -19,10 +19,8 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sns"
 	"github.com/aws/aws-sdk-go/service/sqs"
-	"github.com/hmoragrega/pubsub/internal/env"
-	"github.com/hmoragrega/workers"
-
 	"github.com/hmoragrega/pubsub"
+	"github.com/hmoragrega/pubsub/internal/env"
 )
 
 var (
@@ -148,9 +146,6 @@ func TestPubSubIntegration(t *testing.T) {
 	mc := &Subscriber{
 		SQS:      sqsTest,
 		QueueURL: queueURL,
-		WorkersConfig: workers.Config{
-			Min: 3,
-		},
 	}
 
 	handler := func(_ context.Context, message *pubsub.Message) error {

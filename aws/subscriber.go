@@ -73,9 +73,6 @@ type Subscriber struct {
 	// AckConfig configuration the acknowledgements behaviour
 	AckConfig AckConfig
 
-	// WorkersConfig workers pool configuration.
-	WorkersConfig workers.Config
-
 	pool        *workers.Pool
 	results     chan consumeResult
 	ackStrategy ackStrategy
@@ -139,7 +136,7 @@ func (s *Subscriber) init() (err error) {
 		s.pool = workers.New()
 
 		if s.AckConfig.Async || s.AckConfig.BatchSize > 0 {
-			s.ackStrategy = newAsyncAck(s.SQS, s.QueueURL, s.AckConfig, s.WorkersConfig)
+			s.ackStrategy = newAsyncAck(s.SQS, s.QueueURL, s.AckConfig)
 		} else {
 			s.ackStrategy = newSyncAck(s.SQS, s.QueueURL)
 		}

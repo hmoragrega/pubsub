@@ -15,7 +15,6 @@ import (
 
 	"github.com/hmoragrega/pubsub"
 	"github.com/hmoragrega/pubsub/internal/env"
-	"github.com/hmoragrega/workers"
 )
 
 func TestBench(t *testing.T) {
@@ -24,15 +23,15 @@ func TestBench(t *testing.T) {
 
 	var (
 		messagesCount, _ = strconv.Atoi(env.GetEnvOrDefault("BENCH_MESSAGES", "1000"))
-		workersCount, _  = strconv.Atoi(env.GetEnvOrDefault("BENCH_WORKERS", "12"))
-		asyncBatch, _    = strconv.Atoi(env.GetEnvOrDefault("BENCH_ASYNC_BATCH", "10"))
-		messageSize, _   = strconv.Atoi(env.GetEnvOrDefault("BENCH_MESSAGE_SIZE", "10"))
-		topic            = fmt.Sprintf("benchmark-%d", rand.Int31())
-		queue            = fmt.Sprintf("%s-queue", topic)
-		topicARN         = createTestTopic(ctx, t, topic)
-		queueURL         = createTestQueue(ctx, t, queue)
-		queueARN         = MustGetResource(GetQueueARN(ctx, sqsTest, queueURL))
-		marshaller       = &pubsub.NoOpMarshaller{}
+		//workersCount, _  = strconv.Atoi(env.GetEnvOrDefault("BENCH_WORKERS", "12"))
+		asyncBatch, _  = strconv.Atoi(env.GetEnvOrDefault("BENCH_ASYNC_BATCH", "10"))
+		messageSize, _ = strconv.Atoi(env.GetEnvOrDefault("BENCH_MESSAGE_SIZE", "10"))
+		topic          = fmt.Sprintf("benchmark-%d", rand.Int31())
+		queue          = fmt.Sprintf("%s-queue", topic)
+		topicARN       = createTestTopic(ctx, t, topic)
+		queueURL       = createTestQueue(ctx, t, queue)
+		queueARN       = MustGetResource(GetQueueARN(ctx, sqsTest, queueURL))
+		marshaller     = &pubsub.NoOpMarshaller{}
 	)
 	subscribeTestTopic(ctx, t, topicARN, queueARN)
 	Must(CreateForwardingPolicy(ctx, sqsTest, queueURL, queueARN, topicARN))
@@ -56,9 +55,6 @@ func TestBench(t *testing.T) {
 		QueueURL: queueURL,
 		AckConfig: AckConfig{
 			BatchSize: asyncBatch,
-		},
-		WorkersConfig: workers.Config{
-			Initial: workersCount,
 		},
 	}
 
