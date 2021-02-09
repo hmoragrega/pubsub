@@ -9,8 +9,6 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/sqs"
 	"github.com/hashicorp/go-multierror"
-	"github.com/hmoragrega/workers"
-	"github.com/hmoragrega/workers/wrapper"
 )
 
 type ackStrategy interface {
@@ -55,7 +53,6 @@ type asyncAck struct {
 	queueURL string
 	cfg      AckConfig
 
-	pool     *workers.Pool
 	messages chan *message
 	errors   chan error
 	pending  sync.WaitGroup
@@ -69,7 +66,6 @@ func newAsyncAck(svc sqsSvc, queueURL string, cfg AckConfig) *asyncAck {
 		sqs:      svc,
 		queueURL: queueURL,
 		cfg:      cfg,
-		pool:     workers.New(),
 		messages: make(chan *message, maxNumberOfMessages),
 		errors:   make(chan error, maxNumberOfMessages),
 	}
@@ -92,45 +88,6 @@ func (s *asyncAck) Ack(_ context.Context, msg *message) error {
 }
 
 func (s *asyncAck) Start() error {
-	if err := s.pool.StartBuilder(s); err != nil {
-		return fmt.Errorf("cannot start ack pool: %w", err)
-	}
-	return nil
-}
-
-func (s *asyncAck) Close(ctx context.Context) (err error) {
-	closeResult := make(chan error, 1)
-	go func() {
-		// wait until all messages have been queued
-		s.pending.Wait()
-		// close the message so all workers stop eventually
-		close(s.messages)
-
-		if err := s.pool.Close(ctx); err != nil {
-			closeResult <- err
-			return
-		}
-		// the ack loop has stopped, there will be
-		// no more errors.
-		close(s.errors)
-	}()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case closeErr := <-closeResult:
-			err = multierror.Append(err, closeErr)
-		case ackError, ok := <-s.errors:
-			if !ok {
-				return err
-			}
-			err = multierror.Append(err, ackError)
-		}
-	}
-}
-
-func (s *asyncAck) New() workers.Job {
 	var (
 		size   = s.cfg.BatchSize
 		every  = s.cfg.FlushEvery
@@ -171,7 +128,7 @@ func (s *asyncAck) New() workers.Job {
 		}
 	}
 
-	return wrapper.NoError(func(_ context.Context) {
+	go func() {
 		for {
 			select {
 			case <-tick:
@@ -184,13 +141,38 @@ func (s *asyncAck) New() workers.Job {
 					if ticker != nil {
 						ticker.Stop()
 					}
+
+					close(s.errors)
 					return
 				}
 				add(m)
 				flush(size)
 			}
 		}
-	})
+	}()
+
+	return nil
+}
+
+func (s *asyncAck) Close(ctx context.Context) (err error) {
+	go func() {
+		// wait until all messages have been queued
+		s.pending.Wait()
+		// close the message so all workers stop eventually
+		close(s.messages)
+	}()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case ackError, ok := <-s.errors:
+			if !ok {
+				return err
+			}
+			err = multierror.Append(err, ackError)
+		}
+	}
 }
 
 func (s *asyncAck) batchAck(input []*sqs.DeleteMessageBatchRequestEntry, batch []*message) {
