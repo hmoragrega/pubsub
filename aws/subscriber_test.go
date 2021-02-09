@@ -55,11 +55,9 @@ func TestMain(m *testing.M) {
 }
 
 func TestSubscribe_NextError(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
 	c := &Subscriber{SQS: sqsTest, QueueURL: "bad queue"}
-	if err := c.Subscribe(); err != nil {
+	next, err := c.Subscribe()
+	if err != nil {
 		t.Fatal("failed to start consumer", err)
 	}
 	t.Cleanup(func() {
@@ -68,36 +66,16 @@ func TestSubscribe_NextError(t *testing.T) {
 		}
 	})
 
-	_, err := c.Next(ctx)
-	if err == nil {
+	n := <-next
+	if n.Err == nil {
 		t.Fatal("expected error but got nil")
-	}
-}
-
-func TestSubscribe_SubscribeContextCanceled(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	s := &Subscriber{SQS: sqsTest, QueueURL: "foo"}
-	if err := s.Subscribe(); err != nil {
-		t.Fatal("failed to start consumer", err)
-	}
-	t.Cleanup(func() {
-		if err := s.Stop(context.Background()); err != nil {
-			t.Fatal("failed to stop consumer", err)
-		}
-	})
-
-	_, err := s.Next(ctx)
-	if !errors.Is(err, context.Canceled) {
-		t.Fatal("unexpected error result", err)
 	}
 }
 
 func TestSubscribe_SubscribeErrors(t *testing.T) {
 	t.Run("invalid SQS service", func(t *testing.T) {
 		s := &Subscriber{SQS: nil, QueueURL: "foo"}
-		err := s.Subscribe()
+		_, err := s.Subscribe()
 		if !errors.Is(err, ErrMissingConfig) {
 			t.Fatalf("expected config missing error; got %v", err)
 		}
@@ -105,7 +83,7 @@ func TestSubscribe_SubscribeErrors(t *testing.T) {
 
 	t.Run("invalid queue URL", func(t *testing.T) {
 		s := &Subscriber{SQS: sqsTest, QueueURL: ""}
-		err := s.Subscribe()
+		_, err := s.Subscribe()
 		if !errors.Is(err, ErrMissingConfig) {
 			t.Fatalf("expected config missing error; got %v", err)
 		}
@@ -113,7 +91,7 @@ func TestSubscribe_SubscribeErrors(t *testing.T) {
 
 	t.Run("already started", func(t *testing.T) {
 		s := &Subscriber{SQS: sqsTest, QueueURL: "foo"}
-		err := s.Subscribe()
+		_, err := s.Subscribe()
 		if err != nil {
 			t.Fatalf("unexpected error; got %v", err)
 		}
@@ -122,7 +100,7 @@ func TestSubscribe_SubscribeErrors(t *testing.T) {
 			_ = s.Stop(context.Background())
 		})
 
-		err = s.Subscribe()
+		_, err = s.Subscribe()
 		if !errors.Is(err, ErrAlreadyStarted) {
 			t.Fatalf("expected already started error; got %v", err)
 		}
@@ -132,7 +110,7 @@ func TestSubscribe_SubscribeErrors(t *testing.T) {
 func TestSubscribe_StopErrors(t *testing.T) {
 	t.Run("already started", func(t *testing.T) {
 		s := &Subscriber{SQS: sqsTest, QueueURL: "foo"}
-		err := s.Subscribe()
+		_, err := s.Subscribe()
 		if err != nil {
 			t.Fatalf("unexpected error; got %v", err)
 		}
@@ -157,7 +135,7 @@ func TestSubscribe_StopErrors(t *testing.T) {
 			return nil, nil
 		}
 
-		err := s.Subscribe()
+		_, err := s.Subscribe()
 		if err != nil {
 			t.Fatalf("unexpected error; got %v", err)
 		}
@@ -209,14 +187,14 @@ func TestSubscribe_NextErrors(t *testing.T) {
 			return &sqs.ReceiveMessageOutput{Messages: []*sqs.Message{m}}, nil
 		}
 
-		err := s.Subscribe()
+		next, err := s.Subscribe()
 		if err != nil {
 			t.Fatalf("unexpected error; got %v", err)
 		}
 
 		for i := 0; i < 3; i++ {
-			_, err = s.Next(context.Background())
-			if err == nil {
+			n := <-next
+			if n.Err == nil {
 				t.Fatalf("expected error from bad message; got %v", err)
 			}
 		}
@@ -224,14 +202,6 @@ func TestSubscribe_NextErrors(t *testing.T) {
 		err = s.Stop(context.Background())
 		if err != nil {
 			t.Fatalf("unexpected error stopping; got %v", err)
-		}
-	})
-
-	t.Run("next called on stopped subscriber", func(t *testing.T) {
-		var s Subscriber
-		_, err := s.Next(context.Background())
-		if !errors.Is(err, ErrSubscriberStopped) {
-			t.Fatalf("expected %v error; got %v", ErrSubscriberStopped, err)
 		}
 	})
 }
@@ -436,14 +406,15 @@ func TestSubscriberAsyncAck(t *testing.T) {
 	// be reported on closing the subscription.
 	deleteBatchReturns <- deleteBatchResult{err: errors.New("request failed")}
 
-	if err := mc.Subscribe(); err != nil {
+	next, err := mc.Subscribe()
+	if err != nil {
 		t.Fatal("cannot subscribe", err)
 	}
 
 	ctx := context.Background()
 	for i := 0; i < batchSize+1; i++ {
-		m, err := mc.Next(ctx)
-		if err != nil {
+		n := <-next
+		if n.Err != nil {
 			t.Fatalf("no error is expected consuming the messages, got :%v", err)
 		}
 		if i == batchSize {
@@ -454,7 +425,7 @@ func TestSubscriberAsyncAck(t *testing.T) {
 			// will be propagated upstream in time.
 			time.Sleep(50 * time.Millisecond)
 		}
-		err = m.Ack(ctx)
+		err = n.Message.Ack(ctx)
 		if i < batchSize {
 			if err != nil {
 				t.Fatalf("no error should be reported until the first batch is acked, got :%v", err)
@@ -466,7 +437,7 @@ func TestSubscriberAsyncAck(t *testing.T) {
 		}
 	}
 
-	err := mc.Stop(ctx)
+	err = mc.Stop(ctx)
 	if !errors.Is(err, ErrAcknowledgement) {
 		t.Fatal("expected ack error stopping the subscription")
 	}
@@ -512,12 +483,14 @@ func TestSubscriberAsyncAckTicker(t *testing.T) {
 		},
 	}
 
-	if err := s.Subscribe(); err != nil {
+	next, err := s.Subscribe()
+	if err != nil {
 		t.Fatal("cannot subscribe", err)
 	}
 
 	ctx := context.Background()
-	m, err := s.Next(ctx)
+	n := <-next
+	m, err := n.Message, n.Err
 	if err != nil {
 		t.Fatalf("no error is expected consuming the messages, got :%v", err)
 	}

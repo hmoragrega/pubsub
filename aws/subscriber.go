@@ -86,7 +86,7 @@ type Subscriber struct {
 	// AckConfig configuration the acknowledgements behaviour
 	AckConfig AckConfig
 
-	results     chan consumeResult
+	next        chan pubsub.Next
 	ackStrategy ackStrategy
 	stopped     chan struct{}
 	cancel      func()
@@ -94,18 +94,18 @@ type Subscriber struct {
 	statusMx    sync.RWMutex
 }
 
-func (s *Subscriber) Subscribe() error {
+func (s *Subscriber) Subscribe() (<-chan pubsub.Next, error) {
 	s.statusMx.Lock()
 	defer s.statusMx.Unlock()
 
 	if s.status >= started {
-		return ErrAlreadyStarted
+		return nil, ErrAlreadyStarted
 	}
 	if s.SQS == nil {
-		return fmt.Errorf("%w: SQS service not set", ErrMissingConfig)
+		return nil, fmt.Errorf("%w: SQS service not set", ErrMissingConfig)
 	}
 	if s.QueueURL == "" {
-		return fmt.Errorf("%w: QueueURL cannot be empty", ErrMissingConfig)
+		return nil, fmt.Errorf("%w: QueueURL cannot be empty", ErrMissingConfig)
 	}
 
 	if s.AckConfig.Async || s.AckConfig.BatchSize > 0 {
@@ -115,30 +115,15 @@ func (s *Subscriber) Subscribe() error {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-
-	s.status = started
 	s.cancel = cancel
-	s.results = make(chan consumeResult, maxNumberOfMessages)
+	s.status = started
+
+	s.next = make(chan pubsub.Next, maxNumberOfMessages)
 	s.stopped = make(chan struct{})
 
 	go s.consume(ctx)
 
-	return nil
-}
-
-// Next consumes the next batch of messages in the queue and
-// puts them in the messages channel.
-func (s *Subscriber) Next(ctx context.Context) (pubsub.ReceivedMessage, error) {
-	if !s.isRunning() {
-		return nil, fmt.Errorf("%w", ErrSubscriberStopped)
-	}
-
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case res := <-s.results:
-		return res.message, res.err
-	}
+	return s.next, nil
 }
 
 // Stop stops consuming messages.
@@ -181,14 +166,14 @@ func (s *Subscriber) consume(ctx context.Context) {
 			if ctx.Err() != nil {
 				return
 			}
-			s.results <- consumeResult{err: err}
+			s.next <- pubsub.Next{Err: err}
 		}
 		messages, err := s.wrapMessages(out.Messages)
 		if err != nil {
-			s.results <- consumeResult{err: err}
+			s.next <- pubsub.Next{Err: err}
 		}
 		for _, message := range messages {
-			s.results <- consumeResult{message: message}
+			s.next <- pubsub.Next{Message: message}
 		}
 	}
 }
@@ -249,12 +234,6 @@ func (s *Subscriber) isRunning() bool {
 	defer s.statusMx.RUnlock()
 
 	return s.status == started
-}
-
-// ConsumeResult is the result of consuming messages from the queue.
-type consumeResult struct {
-	message pubsub.ReceivedMessage
-	err     error
 }
 
 type sqsSvc interface {
