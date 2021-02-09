@@ -74,7 +74,7 @@ func TestBench(t *testing.T) {
 			if counter.Count() == uint64(messagesCount) {
 				wg.Done()
 			}
-			return nil
+			return err
 		},
 	}
 	if err := router.RegisterHandler(
