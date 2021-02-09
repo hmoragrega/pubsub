@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/hmoragrega/pubsub"
-	"github.com/hmoragrega/pubsub/internal/stubs"
+	. "github.com/hmoragrega/pubsub/internal/stubs"
 )
 
 var (
@@ -33,12 +33,12 @@ func TestRouter_Run(t *testing.T) {
 	t.Run("cannot subscribe twice to the same topic", func(t *testing.T) {
 		var router pubsub.Router
 
-		err := router.RegisterHandler("same", &stubs.SubscriberStub{}, handlerDummy)
+		err := router.RegisterHandler("same", &SubscriberStub{}, handlerDummy)
 		if err != nil {
 			t.Fatalf("unexpected error registering the topic: %v", err)
 		}
 
-		err = router.RegisterHandler("same", &stubs.SubscriberStub{}, handlerDummy)
+		err = router.RegisterHandler("same", &SubscriberStub{}, handlerDummy)
 		if err == nil {
 			t.Fatalf("unexpected success registering the topic again: %v", err)
 		}
@@ -57,7 +57,7 @@ func TestRouter_Run(t *testing.T) {
 			router  pubsub.Router
 			stopped uint32
 		)
-		for i, s := range [3]*stubs.SubscriberStub{{}, {}, {}} {
+		for i, s := range [3]*SubscriberStub{{}, {}, {}} {
 			if err := router.RegisterHandler(strconv.Itoa(i), s, handlerDummy); err != nil {
 				t.Fatalf("cannot register handler %d: %v", i, err)
 			}
@@ -87,7 +87,7 @@ func TestRouter_Run(t *testing.T) {
 			},
 		}
 		var stopped uint32
-		for i, s := range [3]*stubs.SubscriberStub{{}, {}, {}} {
+		for i, s := range [3]*SubscriberStub{{}, {}, {}} {
 			i := i
 			if err := router.RegisterHandler(strconv.Itoa(i), s, handlerDummy); err != nil {
 				t.Fatalf("cannot register handler %d: %v", i, err)
@@ -130,7 +130,7 @@ func TestRouter_Run(t *testing.T) {
 		ctx, cancel := context.WithCancel(ctx)
 		running := make(chan struct{}, consumers)
 
-		for i, s := range [3]*stubs.SubscriberStub{{}, {}, {}} {
+		for i, s := range [3]*SubscriberStub{{}, {}, {}} {
 			if err := router.RegisterHandler(strconv.Itoa(i), s, handlerDummy); err != nil {
 				t.Fatalf("cannot register handler %d: %v", i, err)
 			}
@@ -164,7 +164,7 @@ func TestRouter_Run(t *testing.T) {
 		var checkpointsCalled int
 
 		ctx, cancel := context.WithCancel(context.Background())
-		msg := stubs.ReceivedMessageStub{
+		msg := ReceivedMessageStub{
 			AckFunc: func(ctx context.Context) error {
 				cancel()
 				return nil
@@ -175,7 +175,7 @@ func TestRouter_Run(t *testing.T) {
 			if err != nil {
 				return err
 			}
-			if message.(*stubs.ReceivedMessageStub) != &msg {
+			if message.(*ReceivedMessageStub) != &msg {
 				return fmt.Errorf("%s mesage is not the equal; got %+v", checkpoint, message)
 			}
 			if topic != subscriberTopic {
@@ -201,7 +201,7 @@ func TestRouter_Run(t *testing.T) {
 			},
 		}
 
-		s := &stubs.SubscriberStub{
+		s := &SubscriberStub{
 			SubscribeFunc: func() (<-chan pubsub.Next, error) {
 				next := make(chan pubsub.Next, 1)
 				next <- pubsub.Next{Message: &msg}

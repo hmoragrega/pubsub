@@ -15,7 +15,6 @@ type Marshaller interface {
 }
 
 // Envelope holds the data that need to be transmitted.
-// version 1.
 type Envelope struct {
 	ID         MessageID
 	Name       string
@@ -23,8 +22,6 @@ type Envelope struct {
 	Body       []byte
 	Version    string
 	Attributes Attributes
-
-	// TODO OcurredAt
 }
 
 // Publisher can publish a message to the
@@ -37,7 +34,7 @@ type Publisher struct {
 func (p *Publisher) Publish(ctx context.Context, topic string, message Message) error {
 	body, version, err := p.Marshaller.Marshal(message.Data)
 	if err != nil {
-		return fmt.Errorf("marshaller error: %v", err)
+		return fmt.Errorf("marshaller error: %w", err)
 	}
 
 	id := message.ID
