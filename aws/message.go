@@ -48,6 +48,6 @@ func (m *message) Attributes() map[string]string {
 	return m.attributes
 }
 
-func (m *message) Ack(ctx context.Context) error {
-	return m.subscriber.ack(ctx, m)
+func (m *message) Ack(_ context.Context) error {
+	return m.subscriber.ack(m)
 }

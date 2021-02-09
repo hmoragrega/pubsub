@@ -22,7 +22,7 @@ type consumer struct {
 	topic      string
 }
 
-// Checkpoints are options hooks executed during the message live cycle,
+// Checkpoints are optional hooks executed during the message live cycle,
 // Returning an error will stop the subscription, and trigger the shutdown
 // of the router.
 type Checkpoint func(ctx context.Context, topic string, msg ReceivedMessage, err error) error

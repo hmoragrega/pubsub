@@ -1,6 +1,6 @@
 vendor
 
-coverage.out
+coverage.*
 coverage/
 
 .data

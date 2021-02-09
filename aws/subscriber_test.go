@@ -94,6 +94,148 @@ func TestSubscribe_SubscribeContextCanceled(t *testing.T) {
 	}
 }
 
+func TestSubscribe_SubscribeErrors(t *testing.T) {
+	t.Run("invalid SQS service", func(t *testing.T) {
+		s := &Subscriber{SQS: nil, QueueURL: "foo"}
+		err := s.Subscribe()
+		if !errors.Is(err, ErrMissingConfig) {
+			t.Fatalf("expected config missing error; got %v", err)
+		}
+	})
+
+	t.Run("invalid queue URL", func(t *testing.T) {
+		s := &Subscriber{SQS: sqsTest, QueueURL: ""}
+		err := s.Subscribe()
+		if !errors.Is(err, ErrMissingConfig) {
+			t.Fatalf("expected config missing error; got %v", err)
+		}
+	})
+
+	t.Run("already started", func(t *testing.T) {
+		s := &Subscriber{SQS: sqsTest, QueueURL: "foo"}
+		err := s.Subscribe()
+		if err != nil {
+			t.Fatalf("unexpected error; got %v", err)
+		}
+
+		t.Cleanup(func() {
+			_ = s.Stop(context.Background())
+		})
+
+		err = s.Subscribe()
+		if !errors.Is(err, ErrAlreadyStarted) {
+			t.Fatalf("expected already started error; got %v", err)
+		}
+	})
+}
+
+func TestSubscribe_StopErrors(t *testing.T) {
+	t.Run("already started", func(t *testing.T) {
+		s := &Subscriber{SQS: sqsTest, QueueURL: "foo"}
+		err := s.Subscribe()
+		if err != nil {
+			t.Fatalf("unexpected error; got %v", err)
+		}
+
+		err = s.Stop(context.Background())
+		if err != nil {
+			t.Fatalf("unexpected error; got %v", err)
+		}
+
+		err = s.Stop(context.Background())
+		if !errors.Is(err, ErrAlreadyStopped) {
+			t.Fatalf("expected already stopped error; got %v", err)
+		}
+	})
+	t.Run("context terminated", func(t *testing.T) {
+		var svc sqsStub
+		s := Subscriber{SQS: &svc, QueueURL: "foo"}
+
+		var block chan struct{}
+		svc.ReceiveMessageWithContextFunc = func(_ aws.Context, _ *sqs.ReceiveMessageInput, _ ...request.Option) (*sqs.ReceiveMessageOutput, error) {
+			<-block
+			return nil, nil
+		}
+
+		err := s.Subscribe()
+		if err != nil {
+			t.Fatalf("unexpected error; got %v", err)
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		err = s.Stop(ctx)
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("expected conext cancelled error; got %v", err)
+		}
+	})
+}
+
+func TestSubscribe_AckFailsOnStoppedSubscribers(t *testing.T) {
+	var s Subscriber
+	err := s.ack(&message{})
+	if !errors.Is(err, ErrSubscriberStopped) {
+		t.Fatalf("expected already stopped error; got %v", err)
+	}
+}
+
+func TestSubscribe_NextErrors(t *testing.T) {
+	t.Run("poisonous messages", func(t *testing.T) {
+		var svc sqsStub
+		s := Subscriber{SQS: &svc, QueueURL: "foo"}
+
+		poisonousMessages := []*sqs.Message{
+			{}, // missing id
+			{MessageAttributes: map[string]*sqs.MessageAttributeValue{
+				idAttributeKey: {},
+			}}, // missing version
+			{MessageAttributes: map[string]*sqs.MessageAttributeValue{
+				idAttributeKey:      {},
+				versionAttributeKey: {},
+			}}, // missing name
+		}
+
+		svc.ReceiveMessageWithContextFunc = func(ctx aws.Context, _ *sqs.ReceiveMessageInput, _ ...request.Option) (*sqs.ReceiveMessageOutput, error) {
+			if len(poisonousMessages) == 0 {
+				<-ctx.Done()
+				return nil, ctx.Err()
+			}
+
+			// pop the message
+			m := poisonousMessages[0]
+			poisonousMessages = poisonousMessages[1:]
+
+			return &sqs.ReceiveMessageOutput{Messages: []*sqs.Message{m}}, nil
+		}
+
+		err := s.Subscribe()
+		if err != nil {
+			t.Fatalf("unexpected error; got %v", err)
+		}
+
+		for i := 0; i < 3; i++ {
+			_, err = s.Next(context.Background())
+			if err == nil {
+				t.Fatalf("expected error from bad message; got %v", err)
+			}
+		}
+
+		err = s.Stop(context.Background())
+		if err != nil {
+			t.Fatalf("unexpected error stopping; got %v", err)
+		}
+	})
+
+	t.Run("next called on stopped subscriber", func(t *testing.T) {
+		var s Subscriber
+		_, err := s.Next(context.Background())
+		if !errors.Is(err, ErrSubscriberStopped) {
+			t.Fatalf("expected %v error; got %v", ErrSubscriberStopped, err)
+		}
+	})
+}
+
 type testStruct struct {
 	ID   int
 	Name string
@@ -324,6 +466,68 @@ func TestSubscriberAsyncAck(t *testing.T) {
 	err := mc.Stop(ctx)
 	if !errors.Is(err, ErrAcknowledgement) {
 		t.Fatal("expected ack error stopping the subscription")
+	}
+}
+
+func TestSubscriberAsyncAckTicker(t *testing.T) {
+	waitForFlush := make(chan struct{})
+
+	var nextCalls int
+	sqsSvc := &sqsStub{
+		ReceiveMessageWithContextFunc: func(ctx aws.Context, _ *sqs.ReceiveMessageInput, _ ...request.Option) (*sqs.ReceiveMessageOutput, error) {
+			nextCalls++
+			if nextCalls == 1 {
+				return &sqs.ReceiveMessageOutput{
+					Messages: []*sqs.Message{{
+						Body: aws.String("body"),
+						MessageAttributes: map[string]*sqs.MessageAttributeValue{
+							idAttributeKey:      {StringValue: aws.String("id")},
+							versionAttributeKey: {StringValue: aws.String("version")},
+							nameAttributeKey:    {StringValue: aws.String("name")},
+						},
+						ReceiptHandle: aws.String("handle"),
+						MessageId:     aws.String("message-id"),
+					}},
+				}, nil
+			}
+			<-ctx.Done()
+			return nil, ctx.Err()
+		},
+		DeleteMessageBatchFunc: func(input *sqs.DeleteMessageBatchInput) (*sqs.DeleteMessageBatchOutput, error) {
+			close(waitForFlush)
+			return nil, errors.New("request failed")
+		},
+	}
+
+	s := &Subscriber{
+		SQS:      sqsSvc,
+		QueueURL: "foo",
+		AckConfig: AckConfig{
+			Async:      true,
+			BatchSize:  2,
+			FlushEvery: 25 * time.Millisecond,
+		},
+	}
+
+	if err := s.Subscribe(); err != nil {
+		t.Fatal("cannot subscribe", err)
+	}
+
+	ctx := context.Background()
+	m, err := s.Next(ctx)
+	if err != nil {
+		t.Fatalf("no error is expected consuming the messages, got :%v", err)
+	}
+	err = m.Ack(ctx)
+	if err != nil {
+		t.Fatalf("no error should be reported :%v", err)
+	}
+
+	<-waitForFlush
+
+	err = s.Stop(ctx)
+	if !errors.Is(err, ErrAcknowledgement) {
+		t.Fatalf("expected ack error reported on stopping, got: %v", ErrAcknowledgement)
 	}
 }
 

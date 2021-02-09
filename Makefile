@@ -45,3 +45,4 @@ coverage-html: clean test coverage-merge
 coverage-merge:
 	@echo 'mode: atomic' > $(COVERAGE_FILE)
 	@tail -q -n +2 $(COVERAGE_FILES) >> $(COVERAGE_FILE)
+	@sed -i'.original' "/internal\/stubs/d" coverage.out $(COVERAGE_FILE)

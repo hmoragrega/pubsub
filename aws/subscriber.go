@@ -231,7 +231,7 @@ func (s *Subscriber) wrapMessages(in []*sqs.Message) (out []pubsub.ReceivedMessa
 	return out, nil
 }
 
-func (s *Subscriber) ack(_ context.Context, msg *message) error {
+func (s *Subscriber) ack(msg *message) error {
 	if !s.isRunning() {
 		return fmt.Errorf("%w", ErrSubscriberStopped)
 	}
