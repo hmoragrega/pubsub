@@ -9,11 +9,6 @@ type EnvelopePublisher interface {
 	Publish(ctx context.Context, topic string, envelope Envelope) error
 }
 
-type Marshaller interface {
-	// Marshal the contents of the message.
-	Marshal(data interface{}) (payload []byte, version string, err error)
-}
-
 // Envelope holds the data that need to be transmitted.
 type Envelope struct {
 	ID         MessageID

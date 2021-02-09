@@ -226,4 +226,153 @@ func TestRouter_Run(t *testing.T) {
 			t.Fatalf("unexpected number of hooks called; got %d, want 4", checkpointsCalled)
 		}
 	})
+
+	t.Run("checkpoint exits", func(t *testing.T) {
+		routers := []*pubsub.Router{
+			{
+				OnReceive: func(_ context.Context, _ string, _ pubsub.ReceivedMessage, _ error) error {
+					return errorDummy
+				},
+			}, {
+				OnUnmarshal: func(_ context.Context, _ string, _ pubsub.ReceivedMessage, _ error) error {
+					return errorDummy
+				},
+			}, {
+				OnHandler: func(_ context.Context, _ string, _ pubsub.ReceivedMessage, _ error) error {
+					return errorDummy
+				},
+			}, {
+				OnAck: func(_ context.Context, _ string, _ pubsub.ReceivedMessage, _ error) error {
+					return errorDummy
+				},
+			},
+		}
+		for _, router := range routers {
+			router.Unmarshaller = pubsub.UnmarshallerFunc(func(_ pubsub.ReceivedMessage) (*pubsub.Message, error) {
+				return &pubsub.Message{}, nil
+			})
+			s := &stubs.SubscriberStub{
+				SubscribeFunc: func() (<-chan pubsub.Next, error) {
+					next := make(chan pubsub.Next, 1)
+					next <- pubsub.Next{Message: &stubs.ReceivedMessageStub{
+						AckFunc: func(ctx context.Context) error {
+							return nil
+						},
+					}}
+
+					return next, nil
+				},
+				StopFunc: func(ctx context.Context) error {
+					return nil
+				},
+			}
+			err := router.RegisterHandler("foo", s, handlerDummy)
+			if err != nil {
+				t.Fatal("cannot register handler", err)
+			}
+
+			err = router.Run(ctx)
+			if !errors.Is(err, errorDummy) {
+				t.Fatalf("expected checkpoint exit error; got %v", err)
+			}
+		}
+	})
+
+	t.Run("continue on errors", func(t *testing.T) {
+		s := &stubs.SubscriberStub{
+			SubscribeFunc: func() (<-chan pubsub.Next, error) {
+				next := make(chan pubsub.Next, 5)
+				next <- pubsub.Next{Err: errorDummy}
+				next <- pubsub.Next{Message: &stubs.ReceivedMessageStub{}}
+				next <- pubsub.Next{Message: &stubs.ReceivedMessageStub{}}
+				next <- pubsub.Next{Message: &stubs.ReceivedMessageStub{}}
+				next <- pubsub.Next{Message: &stubs.ReceivedMessageStub{}}
+				return next, nil
+			},
+			StopFunc: func(ctx context.Context) error {
+				return nil
+			},
+		}
+		var (
+			unmarshallerCalls int
+			handlerCalls      int
+		)
+		router := pubsub.Router{
+			Unmarshaller: pubsub.UnmarshallerFunc(func(_ pubsub.ReceivedMessage) (*pubsub.Message, error) {
+				unmarshallerCalls++
+				if unmarshallerCalls == 1 {
+					return nil, errorDummy
+				}
+				return &pubsub.Message{}, nil
+			}),
+			DisableAutoAck: true,
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		err := router.RegisterHandler("foo", s, pubsub.MessageHandlerFunc(func(ctx context.Context, _ *pubsub.Message) error {
+			handlerCalls++
+			switch handlerCalls {
+			case 1:
+				return errorDummy
+			case 2:
+				return nil
+			}
+			cancel()
+			return ctx.Err()
+		}))
+		if err != nil {
+			t.Fatal("cannot register handler", err)
+		}
+
+		err = router.Run(ctx)
+		if err != nil {
+			t.Fatalf("expected clean shutdown; got %v", err)
+		}
+	})
+
+	t.Run("errors on running routers", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		var router pubsub.Router
+		_ = router.RegisterHandler("foo", &stubs.SubscriberStub{
+			SubscribeFunc: func() (<-chan pubsub.Next, error) {
+				return nil, nil
+			},
+			StopFunc: func(ctx context.Context) error {
+				return nil
+			},
+		}, handlerDummy)
+
+		errs := make(chan error, 2)
+		go func() {
+			errs <- router.Run(ctx)
+		}()
+		go func() {
+			errs <- router.Run(ctx)
+		}()
+
+		err := <-errs
+
+		if !errors.Is(err, pubsub.ErrRouterAlreadyRunning) {
+			t.Fatalf("unexpected error starting the router twice; got %v", err)
+		}
+		err = router.RegisterHandler("bar", &stubs.SubscriberStub{}, handlerDummy)
+		if !errors.Is(err, pubsub.ErrRouterAlreadyRunning) {
+			t.Fatalf("unexpected error registering handlers when router is running; got %v", err)
+		}
+
+		// stop the router.
+		cancel()
+		<-errs
+
+		err = router.RegisterHandler("bar", &stubs.SubscriberStub{}, handlerDummy)
+		if !errors.Is(err, pubsub.ErrRouterAlreadyStopped) {
+			t.Fatalf("unexpected error registering handlers when router has stopped; got %v", err)
+		}
+		err = router.Run(ctx)
+		if !errors.Is(err, pubsub.ErrRouterAlreadyStopped) {
+			t.Fatalf("unexpected error starting a stopped router; got %v", err)
+		}
+	})
 }

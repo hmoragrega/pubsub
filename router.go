@@ -13,6 +13,14 @@ import (
 var (
 	ErrTopicAlreadyRegistered = errors.New("topic already registered")
 	ErrRouterAlreadyRunning   = errors.New("router already running")
+	ErrRouterAlreadyStopped   = errors.New("router already stopped")
+)
+
+type status uint8
+
+const (
+	started status = iota + 1
+	stopped
 )
 
 // Consumer consumes messages from a single subscription.
@@ -58,7 +66,7 @@ type Router struct {
 	OnAck Checkpoint
 
 	consumers map[string]*consumer
-	running   bool
+	status    status
 	mx        sync.RWMutex
 }
 
@@ -66,9 +74,13 @@ func (r *Router) RegisterHandler(topic string, subscriber Subscriber, handler Me
 	r.mx.Lock()
 	defer r.mx.Unlock()
 
-	if r.running {
+	if r.status == started {
 		return ErrRouterAlreadyRunning
 	}
+	if r.status == stopped {
+		return ErrRouterAlreadyStopped
+	}
+
 	_, found := r.consumers[topic]
 	if found {
 		return fmt.Errorf("%w: %s", ErrTopicAlreadyRegistered, topic)
@@ -150,7 +162,7 @@ func (r *Router) subscribe(consumers map[string]*consumer) ([]*consumer, error) 
 func (r *Router) stop(consumers []*consumer) error {
 	defer func() {
 		r.mx.Lock()
-		r.running = false
+		r.status = stopped
 		r.mx.Unlock()
 	}()
 
@@ -254,10 +266,13 @@ func (r *Router) start() error {
 	r.mx.Lock()
 	defer r.mx.Unlock()
 
-	if r.running {
+	if r.status == started {
 		return ErrRouterAlreadyRunning
 	}
+	if r.status == stopped {
+		return ErrRouterAlreadyStopped
+	}
 
-	r.running = true
+	r.status = started
 	return nil
 }

@@ -1,13 +1,16 @@
 package pubsub
 
 import (
+	"errors"
 	"fmt"
 )
 
 const (
-	noOpStringVersion = "noop:s"
-	noOpBytesVersion  = "noop:b"
+	noOpStringVersion = "noop-s"
+	noOpBytesVersion  = "noop-b"
 )
+
+var errInvalidDataType = errors.New("invalid data type")
 
 // NoOpMarshaller accepts payloads as string
 // or byte slice and returns it as is.
@@ -21,7 +24,7 @@ func (m *NoOpMarshaller) Marshal(data interface{}) ([]byte, string, error) {
 		return data.([]byte), noOpBytesVersion, nil
 	}
 
-	return nil, "", fmt.Errorf("expected string or byte slice, got %T", data)
+	return nil, "", fmt.Errorf("%w; expected string or byte slice, got %T", errInvalidDataType, data)
 }
 
 func (m *NoOpMarshaller) Unmarshal(message ReceivedMessage) (*Message, error) {
