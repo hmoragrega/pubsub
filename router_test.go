@@ -184,7 +184,7 @@ func TestRouter_Run(t *testing.T) {
 			return nil
 		}
 		router := pubsub.Router{
-			Unmarshaller: pubsub.UnmarshallerFunc(func(message pubsub.ReceivedMessage) (*pubsub.Message, error) {
+			Unmarshaller: pubsub.UnmarshallerFunc(func(_ string, _ pubsub.ReceivedMessage) (*pubsub.Message, error) {
 				return nil, nil
 			}),
 			OnReceive: func(_ context.Context, topic string, message pubsub.ReceivedMessage, err error) error {
@@ -248,7 +248,7 @@ func TestRouter_Run(t *testing.T) {
 			},
 		}
 		for _, router := range routers {
-			router.Unmarshaller = pubsub.UnmarshallerFunc(func(_ pubsub.ReceivedMessage) (*pubsub.Message, error) {
+			router.Unmarshaller = pubsub.UnmarshallerFunc(func(_ string, _ pubsub.ReceivedMessage) (*pubsub.Message, error) {
 				return &pubsub.Message{}, nil
 			})
 			s := &stubs.SubscriberStub{
@@ -298,7 +298,7 @@ func TestRouter_Run(t *testing.T) {
 			handlerCalls      int
 		)
 		router := pubsub.Router{
-			Unmarshaller: pubsub.UnmarshallerFunc(func(_ pubsub.ReceivedMessage) (*pubsub.Message, error) {
+			Unmarshaller: pubsub.UnmarshallerFunc(func(_ string, _ pubsub.ReceivedMessage) (*pubsub.Message, error) {
 				unmarshallerCalls++
 				if unmarshallerCalls == 1 {
 					return nil, errorDummy

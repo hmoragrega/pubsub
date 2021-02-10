@@ -104,11 +104,11 @@ func TestBench(t *testing.T) {
 	err := router.Run(ctx)
 
 	elapsed := time.Now().Sub(start)
-	fmt.Printf("consumed %d messages in %s, %f msg/s\n", messagesCount, elapsed, float64(messagesCount)/elapsed.Seconds())
+	t.Logf("consumed %d messages in %s, %f msg/s\n", messagesCount, elapsed, float64(messagesCount)/elapsed.Seconds())
 
-	fmt.Printf("processed: %d\n", counter.Count())
-	fmt.Printf("mean: %v\n", counter.MeanPerSecond())
-	fmt.Printf("mean throughput: %f\n", counter.MeanPerSecond()/24)
+	t.Logf("processed: %d\n", counter.Count())
+	t.Logf("mean: %v\n", counter.MeanPerSecond())
+	t.Logf("mean throughput: %f\n", counter.MeanPerSecond()/24)
 
 	if err != nil {
 		t.Fatal("router finished with error", err)

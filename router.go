@@ -222,7 +222,7 @@ func (r *Router) consume(ctx context.Context, c *consumer) error {
 			continue
 		}
 
-		message, err := r.Unmarshaller.Unmarshal(msg)
+		message, err := r.Unmarshaller.Unmarshal(c.topic, msg)
 		if err := r.check(ctx, r.OnUnmarshal, c, msg, err); err != nil {
 			return err
 		}

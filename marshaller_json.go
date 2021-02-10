@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"sync"
 )
 
 const jsonMarshallerVersion0x01 = "json:0x01"
@@ -12,14 +13,24 @@ const jsonMarshallerVersion0x01 = "json:0x01"
 // to encode and decode message.
 type JSONMarshaller struct {
 	types map[string]reflect.Type
+	mx    sync.RWMutex
 }
 
-// Register an event type. Not thread-safe.
-func (m *JSONMarshaller) Register(name string, v interface{}) {
+// Register an event type by event name or topic.
+func (m *JSONMarshaller) Register(key string, v interface{}) error {
+	m.mx.Lock()
+	defer m.mx.Unlock()
+
 	if m.types == nil {
 		m.types = make(map[string]reflect.Type)
 	}
-	m.types[name] = reflect.TypeOf(v).Elem()
+
+	if _, found := m.types[key]; found {
+		return fmt.Errorf("type for key %q already registered", key)
+	}
+
+	m.types[key] = reflect.TypeOf(v).Elem()
+	return nil
 }
 
 func (m *JSONMarshaller) Marshal(v interface{}) ([]byte, string, error) {
@@ -29,15 +40,14 @@ func (m *JSONMarshaller) Marshal(v interface{}) ([]byte, string, error) {
 
 // BodyParser is message handler middleware that can decode
 // the body of a message into an specific type using reflection
-func (m *JSONMarshaller) Unmarshal(msg ReceivedMessage) (*Message, error) {
+func (m *JSONMarshaller) Unmarshal(topic string, msg ReceivedMessage) (*Message, error) {
 	if msg.Version() != jsonMarshallerVersion0x01 {
 		return nil, fmt.Errorf("unknown message version %s", msg.Version())
 	}
 
-	name := msg.Name()
-	t, ok := m.types[msg.Name()]
-	if !ok {
-		return nil, fmt.Errorf("message type not regsitered: %s", name)
+	t, err := m.getType(msg.Name(), topic)
+	if err != nil {
+		return nil, err
 	}
 
 	data, err := m.new(t)
@@ -61,6 +71,21 @@ func (m *JSONMarshaller) Unmarshal(msg ReceivedMessage) (*Message, error) {
 		Attributes: msg.Attributes(),
 		Data:       data,
 	}, nil
+}
+
+func (m *JSONMarshaller) getType(name, topic string) (reflect.Type, error) {
+	m.mx.RLock()
+	defer m.mx.RUnlock()
+
+	if t, ok := m.types[name]; ok {
+		return t, nil
+	}
+
+	if t, ok := m.types[topic]; ok {
+		return t, nil
+	}
+
+	return nil, fmt.Errorf("message type not regsitered: %s", name)
 }
 
 func (m *JSONMarshaller) new(t reflect.Type) (v interface{}, err error) {

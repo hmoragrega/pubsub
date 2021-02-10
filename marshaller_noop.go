@@ -27,7 +27,7 @@ func (m *NoOpMarshaller) Marshal(data interface{}) ([]byte, string, error) {
 	return nil, "", fmt.Errorf("%w; expected string or byte slice, got %T", errInvalidDataType, data)
 }
 
-func (m *NoOpMarshaller) Unmarshal(message ReceivedMessage) (*Message, error) {
+func (m *NoOpMarshaller) Unmarshal(_ string, message ReceivedMessage) (*Message, error) {
 	msg := &Message{
 		ID:         message.ID(),
 		Name:       message.Name(),
