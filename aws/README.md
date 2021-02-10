@@ -1,5 +1,7 @@
 # AWS SNS+SQS
 
+[![ci][ci-badge]][ci-url]
+
 Implementation for publishing messages with SNS and SQS using [v1 of the Go SDK](https://github.com/aws/aws-sdk-go) for AWS.
 
 ## Publisher
@@ -78,3 +80,6 @@ this.
 
 In general this package provides some helper to bootstrap creating new topics and queues and subscribing
  them with the necessary options to work with the parent pubsub package.   
+
+[ci-badge]: https://github.com/hmoragrega/pubsub/workflows/AWS/badge.svg
+[ci-url]:   https://github.com/hmoragrega/pubsub/actions?query=workflow%3AAWS

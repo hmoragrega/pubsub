@@ -1,5 +1,10 @@
 # Pub/Sub
 
+[![godoc][godoc-badge]][godoc-url]
+[![ci][ci-badge]][ci-url]
+[![coverage][coverage-badge]][coverage-url]
+[![goreport][goreport-badge]][goreport-url]
+
 Package for publishing and consuming messages from pub/sub systems.
 
 Supported:
@@ -219,3 +224,15 @@ of the marshaller used to encode this data.
 
 This is important since having this info helps the unmarshaller to understand if it can decode the payload
 or even allows migrating the marshaller in long-lived topic supporting old messages.    
+
+[ci-badge]: https://github.com/hmoragrega/pubsub/workflows/CI/badge.svg
+[ci-url]:   https://github.com/hmoragrega/pubsub/actions?query=workflow%3ACI
+
+[coverage-badge]: https://coveralls.io/repos/github/hmoragrega/pubsub/badge.svg?branch=main
+[coverage-url]:   https://coveralls.io/github/hmoragrega/pubsub?branch=main
+
+[godoc-badge]: https://pkg.go.dev/badge/github.com/hmoragrega/pubsub.svg
+[godoc-url]:   https://pkg.go.dev/github.com/hmoragrega/pubsub
+
+[goreport-badge]: https://goreportcard.com/badge/github.com/hmoragrega/pubsub
+[goreport-url]: https://goreportcard.com/report/github.com/hmoragrega/pubsub
