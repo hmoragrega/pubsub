@@ -15,6 +15,7 @@ import (
 
 	"github.com/hmoragrega/pubsub"
 	"github.com/hmoragrega/pubsub/internal/env"
+	marshaller2 "github.com/hmoragrega/pubsub/marshaller"
 )
 
 func TestBench(t *testing.T) {
@@ -31,7 +32,7 @@ func TestBench(t *testing.T) {
 		topicARN       = createTestTopic(ctx, t, topic)
 		queueURL       = createTestQueue(ctx, t, queue)
 		queueARN       = MustGetResource(GetQueueARN(ctx, sqsTest, queueURL))
-		marshaller     = &pubsub.NoOpMarshaller{}
+		marshaller     = &marshaller2.NoOpMarshaller{}
 	)
 	subscribeTestTopic(ctx, t, topicARN, queueARN)
 	Must(CreateForwardingPolicy(ctx, sqsTest, queueURL, queueARN, topicARN))

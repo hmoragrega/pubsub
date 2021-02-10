@@ -1,16 +1,23 @@
-package pubsub
+package marshaller
 
 import (
 	"errors"
 	"fmt"
+
+	"github.com/hmoragrega/pubsub"
 )
 
 const (
-	noOpStringVersion = "noop-s"
-	noOpBytesVersion  = "noop-b"
+	noOpStringVersion = "noop:s"
+	noOpBytesVersion  = "noop:b"
 )
 
 var errInvalidDataType = errors.New("invalid data type")
+
+var (
+	_ pubsub.Unmarshaller = (*NoOpMarshaller)(nil)
+	_ pubsub.Marshaller   = (*NoOpMarshaller)(nil)
+)
 
 // NoOpMarshaller accepts payloads as string
 // or byte slice and returns it as is.
@@ -27,8 +34,8 @@ func (m *NoOpMarshaller) Marshal(data interface{}) ([]byte, string, error) {
 	return nil, "", fmt.Errorf("%w; expected string or byte slice, got %T", errInvalidDataType, data)
 }
 
-func (m *NoOpMarshaller) Unmarshal(_ string, message ReceivedMessage) (*Message, error) {
-	msg := &Message{
+func (m *NoOpMarshaller) Unmarshal(_ string, message pubsub.ReceivedMessage) (*pubsub.Message, error) {
+	msg := &pubsub.Message{
 		ID:         message.ID(),
 		Name:       message.Name(),
 		Key:        message.Key(),

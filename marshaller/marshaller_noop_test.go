@@ -1,4 +1,4 @@
-package pubsub
+package marshaller
 
 import (
 	"errors"
@@ -18,12 +18,12 @@ func TestNoOpMarshaller_Marshal(t *testing.T) {
 			name:        "string",
 			data:        "foo",
 			want:        []byte("foo"),
-			wantVersion: "noop-s",
+			wantVersion: "noop:s",
 		}, {
 			name:        "byte slice",
 			data:        []byte("foo"),
 			want:        []byte("foo"),
-			wantVersion: "noop-b",
+			wantVersion: "noop:b",
 		}, {
 			name:    "error",
 			data:    123,

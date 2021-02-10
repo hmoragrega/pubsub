@@ -18,6 +18,7 @@ import (
 	"github.com/hmoragrega/pubsub"
 	"github.com/hmoragrega/pubsub/aws"
 	"github.com/hmoragrega/pubsub/internal/env"
+	"github.com/hmoragrega/pubsub/marshaller"
 )
 
 type sumRequest struct {
@@ -76,7 +77,7 @@ func TestLetterbox(t *testing.T) {
 		mathSvcQueueARN     = aws.MustGetResource(aws.GetQueueARN(ctx, sqsTest, mathSvcQueueURL))
 		instanceSub         = aws.MustGetResource(aws.Subscribe(ctx, snsTest, instanceTopicARN, instanceQueueARN))
 		mathSvcSub          = aws.MustGetResource(aws.Subscribe(ctx, snsTest, mathServiceTopicARN, mathSvcQueueARN))
-		jsonMarshaller      pubsub.JSONMarshaller
+		jsonMarshaller      marshaller.JSONMarshaller
 	)
 	aws.Must(aws.CreateForwardingPolicy(ctx, sqsTest, instanceQueueURL, instanceQueueARN, instanceTopicARN))
 	aws.Must(aws.CreateForwardingPolicy(ctx, sqsTest, mathSvcQueueURL, mathSvcQueueARN, mathServiceTopicARN))

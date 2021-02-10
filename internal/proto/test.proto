@@ -1,0 +1,8 @@
+syntax = "proto3";
+
+option go_package = "github.com/hmoragrega/pubsub/internal/pubsub/proto";
+
+message Test {
+  string name = 1;
+  int32 number = 2;
+}

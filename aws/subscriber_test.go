@@ -21,6 +21,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/sqs"
 	"github.com/hmoragrega/pubsub"
 	"github.com/hmoragrega/pubsub/internal/env"
+	"github.com/hmoragrega/pubsub/marshaller"
 )
 
 var (
@@ -223,7 +224,7 @@ func TestPubSubIntegration(t *testing.T) {
 		topicARN       = createTestTopic(ctx, t, testTopic)
 		queueURL       = createTestQueue(ctx, t, testQueue)
 		queueARN       = MustGetResource(GetQueueARN(ctx, sqsTest, queueURL))
-		jsonMarshaller pubsub.JSONMarshaller
+		jsonMarshaller marshaller.JSONMarshaller
 	)
 
 	subscribeTestTopic(ctx, t, topicARN, queueARN)
