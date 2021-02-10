@@ -1,7 +1,7 @@
 package pubsub
 
+// Marshalls the contents of message data.
 type Marshaller interface {
-	// Marshal the contents of the message.
 	Marshal(data interface{}) (payload []byte, version string, err error)
 }
 
