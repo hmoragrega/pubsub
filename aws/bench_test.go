@@ -33,7 +33,7 @@ func TestBench(t *testing.T) {
 		msgMarshaller    = &marshaller.ProtoTextMarshaller{}
 	)
 	subscribeTestTopic(ctx, t, topicARN, queueARN)
-	Must(CreateForwardingPolicy(ctx, sqsTest, queueURL, queueARN, topicARN))
+	Must(AttachQueueForwardingPolicy(ctx, sqsTest, queueURL, queueARN, topicARN))
 
 	if err := msgMarshaller.Register(topic, &proto.Test{}); err != nil {
 		t.Fatal("cannot register type for proto message", err)

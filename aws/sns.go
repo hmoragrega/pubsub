@@ -8,6 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/sns"
 )
 
+// CreateTopic creates a SNS topic.
 func CreateTopic(ctx context.Context, svc *sns.SNS, topicName string) (string, error) {
 	out, err := svc.CreateTopicWithContext(ctx, &sns.CreateTopicInput{
 		Name: &topicName,
@@ -19,6 +20,7 @@ func CreateTopic(ctx context.Context, svc *sns.SNS, topicName string) (string, e
 	return *out.TopicArn, nil
 }
 
+// DeleteTopic deletes a topic.
 func DeleteTopic(ctx context.Context, svc *sns.SNS, topicARN string) error {
 	_, err := svc.DeleteTopicWithContext(ctx, &sns.DeleteTopicInput{
 		TopicArn: &topicARN,
@@ -29,6 +31,7 @@ func DeleteTopic(ctx context.Context, svc *sns.SNS, topicARN string) error {
 	return err
 }
 
+// Subscribe a queue to a topic with raw delivery enabled
 func Subscribe(ctx context.Context, svc *sns.SNS, topicARN, queueARN string) (string, error) {
 	out, err := svc.SubscribeWithContext(ctx, &sns.SubscribeInput{
 		Endpoint: &queueARN,
@@ -44,6 +47,7 @@ func Subscribe(ctx context.Context, svc *sns.SNS, topicARN, queueARN string) (st
 	return *out.SubscriptionArn, nil
 }
 
+// Unsubscribe removes the subscription of the topic.
 func Unsubscribe(ctx context.Context, svc *sns.SNS, subscriptionARN string) error {
 	_, err := svc.UnsubscribeWithContext(ctx, &sns.UnsubscribeInput{
 		SubscriptionArn: &subscriptionARN,
@@ -54,6 +58,7 @@ func Unsubscribe(ctx context.Context, svc *sns.SNS, subscriptionARN string) erro
 	return nil
 }
 
+// MustGetResource will panic if the creation of a AWS resource has failed.
 func MustGetResource(s string, err error) string {
 	if err != nil {
 		panic(err)
@@ -61,6 +66,7 @@ func MustGetResource(s string, err error) string {
 	return s
 }
 
+// Must will panic if wrapped operation has failed.
 func Must(err error) {
 	if err != nil {
 		panic(err)

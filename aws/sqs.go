@@ -9,6 +9,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/sqs"
 )
 
+// CreateQueue creates a SQS queue.
 func CreateQueue(ctx context.Context, svc *sqs.SQS, queueName string) (string, error) {
 	out, err := svc.CreateQueueWithContext(ctx, &sqs.CreateQueueInput{
 		QueueName: aws.String(queueName),
@@ -20,6 +21,7 @@ func CreateQueue(ctx context.Context, svc *sqs.SQS, queueName string) (string, e
 	return *out.QueueUrl, nil
 }
 
+// GetQueueARN gets the queue ARN.
 func GetQueueARN(ctx context.Context, svc *sqs.SQS, queueURL string) (string, error) {
 	out, err := svc.GetQueueAttributesWithContext(ctx, &sqs.GetQueueAttributesInput{
 		AttributeNames: []*string{aws.String("QueueArn")},
@@ -32,6 +34,7 @@ func GetQueueARN(ctx context.Context, svc *sqs.SQS, queueURL string) (string, er
 	return *out.Attributes["QueueArn"], nil
 }
 
+// DeleteQueue deletes a queue.
 func DeleteQueue(ctx context.Context, svc *sqs.SQS, queueURL string) error {
 	_, err := svc.DeleteQueueWithContext(ctx, &sqs.DeleteQueueInput{
 		QueueUrl: aws.String(queueURL),
@@ -42,7 +45,9 @@ func DeleteQueue(ctx context.Context, svc *sqs.SQS, queueURL string) error {
 	return err
 }
 
-func CreateForwardingPolicy(ctx context.Context, svc *sqs.SQS, queueURL, queueARN, topicARN string) error {
+// AttachQueueForwardingPolicy attaches a queue policy that enables
+// a topic to send messages to it.
+func AttachQueueForwardingPolicy(ctx context.Context, svc *sqs.SQS, queueURL, queueARN, topicARN string) error {
 	_, err := svc.SetQueueAttributesWithContext(ctx, &sqs.SetQueueAttributesInput{
 		QueueUrl: &queueURL,
 		Attributes: map[string]*string{

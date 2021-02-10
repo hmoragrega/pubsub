@@ -48,7 +48,7 @@ func TestDeleteQueueFailure(t *testing.T) {
 }
 
 func TestCreateForwardingPolicyFailure(t *testing.T) {
-	err := CreateForwardingPolicy(context.Background(), badSQS(), "foo", "bar", "fuz")
+	err := AttachQueueForwardingPolicy(context.Background(), badSQS(), "foo", "bar", "fuz")
 	if err == nil {
 		t.Fatal("expected error using an uninitialized sns")
 	}

@@ -58,9 +58,9 @@ func (x *Letterbox) Request(ctx context.Context, topic string, request pubsub.Me
 	}
 
 	// inject the attributes so we know where to answer.
-	request.SetAttribute(responseTopicAttribute, x.Topic)
-	request.SetAttribute(requestIDAttribute, requestID)
-	request.SetAttribute(requestedAtAttribute, time.Now().Format(time.RFC3339Nano))
+	x.setAttribute(&request, responseTopicAttribute, x.Topic)
+	x.setAttribute(&request, requestIDAttribute, requestID)
+	x.setAttribute(&request, requestedAtAttribute, time.Now().Format(time.RFC3339Nano))
 
 	c, err := x.waitFor(requestID, &request)
 	if err != nil {
@@ -109,8 +109,8 @@ func (x *Letterbox) Response(ctx context.Context, request, response *pubsub.Mess
 		return fmt.Errorf("missing request time")
 	}
 
-	response.SetAttribute(requestIDAttribute, requestID)
-	response.SetAttribute(requestedAtAttribute, requestedAt)
+	x.setAttribute(response, requestIDAttribute, requestID)
+	x.setAttribute(response, requestedAtAttribute, requestedAt)
 
 	if err := x.Publisher.Publish(ctx, topic, *response); err != nil {
 		return fmt.Errorf("cannot send response: %v", err)
@@ -204,4 +204,12 @@ func (x *Letterbox) delete(id string) {
 	x.mx.Lock()
 	delete(x.requests, id)
 	x.mx.Unlock()
+}
+
+func (x *Letterbox) setAttribute(message *pubsub.Message, key, value string) {
+	if message.Attributes == nil {
+		message.Attributes = make(pubsub.Attributes)
+	}
+
+	message.Attributes[key] = value
 }

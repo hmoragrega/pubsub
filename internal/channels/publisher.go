@@ -47,7 +47,8 @@ func (p *Publisher) Publish(ctx context.Context, topic string, envelope pubsub.E
 					return nil
 				},
 			},
-		}:}
+		}:
+		}
 	}
 
 	return nil

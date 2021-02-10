@@ -31,23 +31,21 @@ type consumer struct {
 	next       <-chan Next
 }
 
-// Checkpoints are optional hooks executed during the message live cycle,
+// Checkpoint: optional hooks executed during the message live cycle
+//
 // Returning an error will stop the subscription, and trigger the shutdown
 // of the router.
 type Checkpoint func(ctx context.Context, topic string, msg ReceivedMessage, err error) error
 
 // Router groups consumers and runs them together.
 type Router struct {
-	// Message unmarshaller
+	// Message unmarshaller. If none provided
+	// NoOpUnmarshaller will be used.
 	Unmarshaller Unmarshaller
 
 	// DisableAutoAck disables automatic acknowledgement of the
 	// messages. The handler will be responsible for it.
 	DisableAutoAck bool
-
-	// Publisher can be used optionally if a message handler
-	// needs to publish more messages after handling its message.
-	Publisher *Publisher
 
 	// StopTimeout time to wait for all the consumer to stop in a
 	// clean way. No timeout by default.
@@ -275,6 +273,9 @@ func (r *Router) start() error {
 	}
 	if r.status == stopped {
 		return ErrRouterAlreadyStopped
+	}
+	if r.Unmarshaller == nil {
+		r.Unmarshaller = NoOpUnmarshaller()
 	}
 
 	r.status = started

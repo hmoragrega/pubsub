@@ -14,11 +14,13 @@ import (
 
 var ErrTopicNotFound = errors.New("could not find topic ARN")
 
+// Publisher SNS publisher.
 type Publisher struct {
 	SNS       *sns.SNS
 	TopicARNs map[string]string
 }
 
+// Publish a message trough SNS.
 func (p *Publisher) Publish(ctx context.Context, topic string, env pubsub.Envelope) error {
 	var topicARN string
 

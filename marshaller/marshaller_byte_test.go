@@ -13,7 +13,7 @@ import (
 	"github.com/hmoragrega/pubsub/internal/stubs"
 )
 
-func TestNoOpMarshaller_Marshal(t *testing.T) {
+func TestByteMarshaller_Marshal(t *testing.T) {
 	tests := []struct {
 		name        string
 		data        interface{}
@@ -25,12 +25,12 @@ func TestNoOpMarshaller_Marshal(t *testing.T) {
 			name:        "string",
 			data:        "foo",
 			want:        []byte("foo"),
-			wantVersion: "noop:s",
+			wantVersion: "byte:s",
 		}, {
 			name:        "byte slice",
 			data:        []byte("foo"),
 			want:        []byte("foo"),
-			wantVersion: "noop:b",
+			wantVersion: "byte:b",
 		}, {
 			name:    "error",
 			data:    123,
@@ -39,7 +39,7 @@ func TestNoOpMarshaller_Marshal(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			var m NoOpMarshaller
+			var m ByteMarshaller
 
 			got, gotVersion, gotErr := m.Marshal(tc.data)
 
@@ -56,7 +56,7 @@ func TestNoOpMarshaller_Marshal(t *testing.T) {
 	}
 }
 
-func TestNoOpMarshaller_Unmarshal(t *testing.T) {
+func TestByteMarshaller_Unmarshal(t *testing.T) {
 	const validKey = "valid"
 
 	buf := make([]byte, 20)
@@ -86,7 +86,7 @@ func TestNoOpMarshaller_Unmarshal(t *testing.T) {
 			name: "byte slice",
 			message: &stubs.ReceivedMessageStub{
 				VersionFunc: func() string {
-					return noOpBytesVersion
+					return byteSliceVersion
 				},
 				NameFunc: func() string {
 					return validKey
@@ -117,7 +117,7 @@ func TestNoOpMarshaller_Unmarshal(t *testing.T) {
 			name: "string",
 			message: &stubs.ReceivedMessageStub{
 				VersionFunc: func() string {
-					return noOpStringVersion
+					return byteStringVersion
 				},
 				NameFunc: func() string {
 					return validKey
@@ -147,7 +147,7 @@ func TestNoOpMarshaller_Unmarshal(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			var m NoOpMarshaller
+			var m ByteMarshaller
 
 			gotMessage, gotError := m.Unmarshal(tc.topic, tc.message)
 

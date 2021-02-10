@@ -13,7 +13,6 @@ env:
 
 .PHONY: up
 up:
-	@mkdir -p .data/pulsar
 	@docker-compose up -d
 	@./scripts/wait-for-sqs.sh
 

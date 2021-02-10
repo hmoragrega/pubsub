@@ -6,6 +6,8 @@ import (
 	"fmt"
 )
 
+// ErrMissingHandler is fired when the dispatcher has not handler
+// registered for the message name.
 var ErrMissingHandler = errors.New("missing handler")
 
 // Handler handles events.
@@ -16,6 +18,7 @@ type Handler interface {
 // HandlerFunc that handles an event
 type HandlerFunc func(ctx context.Context, message *Message) error
 
+// HandleMessage handles the message using the function.
 func (f HandlerFunc) HandleMessage(ctx context.Context, message *Message) error {
 	return f(ctx, message)
 }

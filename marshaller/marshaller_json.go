@@ -26,13 +26,13 @@ func (m *JSONMarshaller) Register(key string, v interface{}) error {
 	return m.registry.register(key, v)
 }
 
+// Marshal marshals the message data as JSON.
 func (m *JSONMarshaller) Marshal(v interface{}) ([]byte, string, error) {
 	b, err := json.Marshal(v)
 	return b, jsonVersion0x01, err
 }
 
-// BodyParser is message handler middleware that can decode
-// the body of a message into an specific type using reflection
+// Unmarshal unmarshall the message body as JSON.
 func (m *JSONMarshaller) Unmarshal(topic string, msg pubsub.ReceivedMessage) (*pubsub.Message, error) {
 	if v := msg.Version(); v != jsonVersion0x01 {
 		return nil, fmt.Errorf("%w: %s", errUnknownVersion, v)

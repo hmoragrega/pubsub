@@ -1,6 +1,6 @@
 package pubsub
 
-// Marshalls the contents of message data.
+// Marshaller marshalls the contents of message data.
 type Marshaller interface {
 	Marshal(data interface{}) (payload []byte, version string, err error)
 }
@@ -17,4 +17,17 @@ type UnmarshallerFunc func(topic string, message ReceivedMessage) (*Message, err
 
 func (f UnmarshallerFunc) Unmarshal(topic string, message ReceivedMessage) (*Message, error) {
 	return f(topic, message)
+}
+
+// NoOpUnmarshaller will pass the message data raw byte slice.
+func NoOpUnmarshaller() Unmarshaller {
+	return UnmarshallerFunc(func(topic string, message ReceivedMessage) (*Message, error) {
+		return &Message{
+			ID:         message.ID(),
+			Name:       message.Name(),
+			Key:        message.Key(),
+			Attributes: message.Attributes(),
+			Data:       message.Body(),
+		}, nil
+	})
 }

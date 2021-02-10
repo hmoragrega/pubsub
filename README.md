@@ -48,7 +48,7 @@ router.Run(ctx)
 
 ## Components
 ### Message
-The key component in the flow is the [message](message.go#L18), this is the struct that 
+The key component in the flow is the [message](message.go#L38), this is the struct that 
 is going to be published, and the struct that your handlers will receive.     
 
 The message contains this information:    
@@ -56,7 +56,7 @@ The message contains this information:
 you've chosen supports serializing it to a `[]byte`.     
 * **ID:** (optional) a `string` with an ID for the message, if not provided, the publisher
  will add one UUIDv4 automatically.     
-* **Name:** (optional) name for the message, it can be used to [dispatch the messages](handler.go#L25) using the name as 
+* **Name:** (optional) name for the message, it can be used to [dispatch the messages](handler.go#L28) using the name as 
 discriminator while sharing the same topic.     
 * **Key:** (optional) certain pub/sub system can leverage the key to provide FIFO semantics to
 messages with the same key within a single topic.      
@@ -77,11 +77,11 @@ Steps:
 as an `EnvelopeMessage` to the pub/sub system.     
 
 #### Envelope publisher
-This is the specific sender for each pub/sub system, it receives an [envelope](publisher.go#L12), that holds
+This is the specific sender for each pub/sub system, it receives an [envelope](publisher.go#L24), that holds
 the data for the message (this time as `[]byte`), the envelope has also the version of the marshaller 
 used to serialize the data.    
 
-You can check the implementation for Amazon's [SNS service here](aws/publisher.go#L22) as example.     
+You can check the implementation for Amazon's [SNS service here](aws/publisher.go#L24) as example.     
 
 ### Subscriber
 The subscriber can subscribe to a single topic in a pub/sub system and consume the topic 

@@ -50,10 +50,3 @@ type Message struct {
 	// Message attributes
 	Attributes Attributes
 }
-
-func (m *Message) SetAttribute(key, value string) {
-	if m.Attributes == nil {
-		m.Attributes = make(Attributes)
-	}
-	m.Attributes[key] = value
-}

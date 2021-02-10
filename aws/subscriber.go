@@ -39,6 +39,7 @@ type ackStrategy interface {
 	Close(ctx context.Context) error
 }
 
+// AckConfig configures the acknowledgements behaviour.
 type AckConfig struct {
 	// Async will ack on the message asynchronously returning
 	// immediately with success.
@@ -90,6 +91,7 @@ type Subscriber struct {
 	statusMx    sync.RWMutex
 }
 
+// Subscribe subscribes to a SQS queue.
 func (s *Subscriber) Subscribe() (<-chan pubsub.Next, error) {
 	s.statusMx.Lock()
 	defer s.statusMx.Unlock()

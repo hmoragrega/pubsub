@@ -227,7 +227,7 @@ func TestPubSubIntegration(t *testing.T) {
 	)
 
 	subscribeTestTopic(ctx, t, topicARN, queueARN)
-	Must(CreateForwardingPolicy(ctx, sqsTest, queueURL, queueARN, topicARN))
+	Must(AttachQueueForwardingPolicy(ctx, sqsTest, queueURL, queueARN, topicARN))
 
 	// Create SNS publisher
 	publisher := pubsub.StdPublisher{

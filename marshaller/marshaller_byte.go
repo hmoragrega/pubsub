@@ -8,38 +8,40 @@ import (
 )
 
 const (
-	noOpStringVersion = "noop:s"
-	noOpBytesVersion  = "noop:b"
+	byteStringVersion = "byte:s"
+	byteSliceVersion  = "byte:b"
 )
 
 var errInvalidDataType = errors.New("invalid data type")
 
 var (
-	_ pubsub.Unmarshaller = (*NoOpMarshaller)(nil)
-	_ pubsub.Marshaller   = (*NoOpMarshaller)(nil)
+	_ pubsub.Unmarshaller = (*ByteMarshaller)(nil)
+	_ pubsub.Marshaller   = (*ByteMarshaller)(nil)
 )
 
-// NoOpMarshaller accepts payloads as string
+// ByteMarshaller accepts payloads as string
 // or byte slice and returns it as is.
-type NoOpMarshaller struct{}
+type ByteMarshaller struct{}
 
-func (m *NoOpMarshaller) Marshal(data interface{}) ([]byte, string, error) {
+// Marshal marshalls a string or byte slice payloads.
+func (m *ByteMarshaller) Marshal(data interface{}) ([]byte, string, error) {
 	switch data.(type) {
 	case string:
-		return []byte(data.(string)), noOpStringVersion, nil
+		return []byte(data.(string)), byteStringVersion, nil
 	case []byte:
-		return data.([]byte), noOpBytesVersion, nil
+		return data.([]byte), byteSliceVersion, nil
 	}
 
 	return nil, "", fmt.Errorf("%w; expected string or byte slice, got %T", errInvalidDataType, data)
 }
 
-func (m *NoOpMarshaller) Unmarshal(_ string, message pubsub.ReceivedMessage) (*pubsub.Message, error) {
+// Unmarshal unmarshals a string or byte slice.
+func (m *ByteMarshaller) Unmarshal(_ string, message pubsub.ReceivedMessage) (*pubsub.Message, error) {
 	var data interface{}
 	switch v := message.Version(); v {
-	case noOpStringVersion:
+	case byteStringVersion:
 		data = string(message.Body())
-	case noOpBytesVersion:
+	case byteSliceVersion:
 		data = message.Body()
 	default:
 		return nil, fmt.Errorf("%w: %s", errUnknownVersion, v)

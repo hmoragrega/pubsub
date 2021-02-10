@@ -5,10 +5,17 @@ import (
 	"fmt"
 )
 
+// Publisher describes the top level method to publish messages.
 type Publisher interface {
 	Publish(ctx context.Context, topic string, message Message) error
 }
 
+// EnvelopePublisher publish envelopes where the data has already been
+// marshalled.
+//
+// You can also use this interface directly is you want to handle the
+// marshalling yourself, combined with the NoOpMarshaller for the
+// router.
 type EnvelopePublisher interface {
 	Publish(ctx context.Context, topic string, envelope Envelope) error
 }
@@ -23,13 +30,14 @@ type Envelope struct {
 	Attributes Attributes
 }
 
-// StdPublisher can publish a message to the
-// appropriate publisher based on the topic.
+// StdPublisher will marshall a message and publish a message
+// delegate the publishing of the envelope.
 type StdPublisher struct {
 	Publisher  EnvelopePublisher
 	Marshaller Marshaller
 }
 
+// Publish a message to the given topic.
 func (p *StdPublisher) Publish(ctx context.Context, topic string, message Message) error {
 	body, version, err := p.Marshaller.Marshal(message.Data)
 	if err != nil {
@@ -52,14 +60,15 @@ func (p *StdPublisher) Publish(ctx context.Context, topic string, message Messag
 }
 
 // PublisherHandler handles events and generates new
-// messages that will be published.
+// messages that should be published.
 type PublisherHandler interface {
 	HandleMessage(ctx context.Context, message *Message) ([]*Message, error)
 }
 
-// PublisherHandlerFunc that handles an event
+// PublisherHandlerFunc function that can handle a message.
 type PublisherHandlerFunc func(ctx context.Context, message *Message) ([]*Message, error)
 
+// HandleMessage handles the message with the function.
 func (f PublisherHandlerFunc) HandleMessage(ctx context.Context, message *Message) ([]*Message, error) {
 	return f(ctx, message)
 }

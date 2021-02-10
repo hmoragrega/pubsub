@@ -38,6 +38,7 @@ func (m *ProtoTextMarshaller) Register(key string, v proto.Message) error {
 	return m.registry.register(key, v)
 }
 
+// Marshal marshals a proto message.
 func (m *ProtoTextMarshaller) Marshal(v interface{}) ([]byte, string, error) {
 	pb, ok := v.(proto.Message)
 	if !ok {
@@ -48,8 +49,7 @@ func (m *ProtoTextMarshaller) Marshal(v interface{}) ([]byte, string, error) {
 	return b, protoText0x01, err
 }
 
-// BodyParser is message handler middleware that can decode
-// the body of a message into an specific type using reflection
+// Unmarshal unmarshals the message body into the registered proto message.
 func (m *ProtoTextMarshaller) Unmarshal(topic string, msg pubsub.ReceivedMessage) (*pubsub.Message, error) {
 	if v := msg.Version(); v != protoText0x01 {
 		return nil, fmt.Errorf("%w: %s", errUnknownVersion, v)

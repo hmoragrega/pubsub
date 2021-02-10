@@ -38,7 +38,7 @@ Once the message has been handled it will be acknowledged one by one deleting th
 We can enable batching the acknowledgements, this will reduce the number of requests to SQS, also,
 speed up the consumption of the next message.   
 
-To do you can tweak the [AckConfig](subscriber.go#L42) in the subscriber:
+To do you can tweak the [AckConfig](subscriber.go#L43) in the subscriber:
 * `Async`: if set true it will acknowledge the messages asynchronously.   
 * `BatchSize`: set a value greater than 0 to use batch acknowledgements, enabling batching will enable asynchronous
  acknowledgements automatically.   
@@ -70,7 +70,7 @@ the topic to send messages to the queue
 This package provides a helper that will a single topic to publish to a single queue
 ```go
 subscriptionARN, err := aws.Subscribe(ctx, snsService, topicARN, queueARN)
-err := CreateForwardingPolicy(ctx, sqsService, queueURL, queueARN, topicARN)
+err := AttachQueueForwardingPolicy(ctx, sqsService, queueURL, queueARN, topicARN)
 ```
 
 ### Raw Delivery
