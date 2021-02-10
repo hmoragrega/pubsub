@@ -231,14 +231,14 @@ func TestPubSubIntegration(t *testing.T) {
 	Must(CreateForwardingPolicy(ctx, sqsTest, queueURL, queueARN, topicARN))
 
 	// Create SNS publisher
-	publisher := pubsub.Publisher{
+	publisher := pubsub.StdPublisher{
 		Publisher: &Publisher{SNS: snsTest, TopicARNs: map[string]string{
 			testTopic: topicARN,
 		}},
 		Marshaller: &jsonMarshaller,
 	}
 
-	jsonMarshaller.Register(eventName, &testStruct{})
+	_ = jsonMarshaller.Register(eventName, &testStruct{})
 	entity := &testStruct{
 		ID:   123,
 		Name: "John Doe",

@@ -20,7 +20,7 @@ func TestPublisher_PublishMarshallFailure(t *testing.T) {
 		},
 	}
 
-	p := pubsub.Publisher{Marshaller: m}
+	p := pubsub.StdPublisher{Marshaller: m}
 
 	err := p.Publish(context.Background(), "foo", pubsub.Message{Data: "data"})
 	if !errors.Is(err, fakeErr) {

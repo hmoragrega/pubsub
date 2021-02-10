@@ -40,7 +40,7 @@ func TestBench(t *testing.T) {
 		t.Fatal("cannot register type for proto message", err)
 	}
 
-	publisher := &pubsub.Publisher{
+	publisher := &pubsub.StdPublisher{
 		Publisher: &Publisher{
 			SNS: snsTest,
 			TopicARNs: map[string]string{
@@ -132,7 +132,7 @@ func TestBench(t *testing.T) {
 	}
 }
 
-func publishMessages(publisher *pubsub.Publisher, topic string, messagesCount, messageSize int) error {
+func publishMessages(publisher pubsub.Publisher, topic string, messagesCount, messageSize int) error {
 	rand.Seed(time.Now().UnixNano())
 
 	messagesLeft := messagesCount

@@ -92,7 +92,7 @@ func TestLetterbox(t *testing.T) {
 		aws.Must(aws.DeleteTopic(ctx, snsTest, instanceTopicARN))
 	})
 
-	publisher := &pubsub.Publisher{
+	publisher := &pubsub.StdPublisher{
 		Publisher: &aws.Publisher{
 			SNS: snsTest,
 			TopicARNs: map[string]string{

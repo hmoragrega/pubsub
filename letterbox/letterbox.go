@@ -39,7 +39,7 @@ type Letterbox struct {
 	// when a response is received in this letterbox.
 	OnResponse func(response *Response)
 
-	Publisher *pubsub.Publisher
+	Publisher pubsub.Publisher
 
 	// response topic for this instance.
 	Topic string
