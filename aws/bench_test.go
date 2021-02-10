@@ -4,7 +4,6 @@ package aws
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
 	"math/rand"
 	"strconv"
@@ -15,7 +14,8 @@ import (
 
 	"github.com/hmoragrega/pubsub"
 	"github.com/hmoragrega/pubsub/internal/env"
-	marshaller2 "github.com/hmoragrega/pubsub/marshaller"
+	"github.com/hmoragrega/pubsub/internal/proto"
+	"github.com/hmoragrega/pubsub/marshaller"
 )
 
 func TestBench(t *testing.T) {
@@ -24,18 +24,21 @@ func TestBench(t *testing.T) {
 
 	var (
 		messagesCount, _ = strconv.Atoi(env.GetEnvOrDefault("BENCH_MESSAGES", "1000"))
-		//workersCount, _  = strconv.Atoi(env.GetEnvOrDefault("BENCH_WORKERS", "12"))
-		asyncBatch, _  = strconv.Atoi(env.GetEnvOrDefault("BENCH_ASYNC_BATCH", "10"))
-		messageSize, _ = strconv.Atoi(env.GetEnvOrDefault("BENCH_MESSAGE_SIZE", "10"))
-		topic          = fmt.Sprintf("benchmark-%d", rand.Int31())
-		queue          = fmt.Sprintf("%s-queue", topic)
-		topicARN       = createTestTopic(ctx, t, topic)
-		queueURL       = createTestQueue(ctx, t, queue)
-		queueARN       = MustGetResource(GetQueueARN(ctx, sqsTest, queueURL))
-		marshaller     = &marshaller2.NoOpMarshaller{}
+		asyncBatch, _    = strconv.Atoi(env.GetEnvOrDefault("BENCH_ASYNC_BATCH", "10"))
+		messageSize, _   = strconv.Atoi(env.GetEnvOrDefault("BENCH_MESSAGE_SIZE", "10"))
+		topic            = fmt.Sprintf("benchmark-%d", rand.Int31())
+		queue            = fmt.Sprintf("%s-queue", topic)
+		topicARN         = createTestTopic(ctx, t, topic)
+		queueURL         = createTestQueue(ctx, t, queue)
+		queueARN         = MustGetResource(GetQueueARN(ctx, sqsTest, queueURL))
+		msgMarshaller    = &marshaller.ProtoTextMarshaller{}
 	)
 	subscribeTestTopic(ctx, t, topicARN, queueARN)
 	Must(CreateForwardingPolicy(ctx, sqsTest, queueURL, queueARN, topicARN))
+
+	if err := msgMarshaller.Register(topic, &proto.Test{}); err != nil {
+		t.Fatal("cannot register type for proto message", err)
+	}
 
 	publisher := &pubsub.Publisher{
 		Publisher: &Publisher{
@@ -44,9 +47,10 @@ func TestBench(t *testing.T) {
 				topic: topicARN,
 			},
 		},
-		Marshaller: marshaller,
+		Marshaller: msgMarshaller,
 	}
 
+	t.Logf("sending %d messages\n", messagesCount)
 	if err := publishMessages(publisher, topic, messagesCount, messageSize); err != nil {
 		t.Fatal("error publishing messages", err)
 	}
@@ -65,7 +69,19 @@ func TestBench(t *testing.T) {
 	wg.Add(1)
 
 	router := pubsub.Router{
-		Unmarshaller: marshaller,
+		Unmarshaller: msgMarshaller,
+		OnReceive: func(_ context.Context, _ string, _ pubsub.ReceivedMessage, err error) error {
+			if err != nil {
+				return fmt.Errorf("error receiving message: %v", err)
+			}
+			return nil
+		},
+		OnUnmarshal: func(_ context.Context, _ string, _ pubsub.ReceivedMessage, err error) error {
+			if err != nil {
+				return fmt.Errorf("error unmarshalling message: %v", err)
+			}
+			return nil
+		},
 		OnAck: func(_ context.Context, _ string, _ pubsub.ReceivedMessage, err error) error {
 			counter.Add(1)
 			if counter.Count() == uint64(messagesCount) {
@@ -119,8 +135,6 @@ func TestBench(t *testing.T) {
 func publishMessages(publisher *pubsub.Publisher, topic string, messagesCount, messageSize int) error {
 	rand.Seed(time.Now().UnixNano())
 
-	fmt.Printf("sending %d messages\n", messagesCount)
-
 	messagesLeft := messagesCount
 	works := 64
 
@@ -169,7 +183,7 @@ func publishMessages(publisher *pubsub.Publisher, topic string, messagesCount, m
 		addMsg <- &pubsub.Message{
 			ID:   pubsub.NewID(),
 			Name: topic,
-			Data: msgPayload,
+			Data: &proto.Test{Payload: msgPayload},
 		}
 	}
 	close(addMsg)
@@ -183,14 +197,10 @@ func publishMessages(publisher *pubsub.Publisher, topic string, messagesCount, m
 	return nil
 }
 
-func payload(messageSize int) (string, error) {
+func payload(messageSize int) ([]byte, error) {
 	msgPayload := make([]byte, messageSize)
 	_, err := rand.Read(msgPayload)
-	if err != nil {
-		panic(err)
-	}
-
-	return base64.StdEncoding.EncodeToString(msgPayload), nil
+	return msgPayload, err
 }
 
 type Counter struct {
