@@ -2,6 +2,7 @@ package marshaller
 
 import (
 	"errors"
+	"math/rand"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -13,6 +14,9 @@ import (
 )
 
 func TestProtoTextMarshaller_Marshal(t *testing.T) {
+	buf := make([]byte, 10)
+	rand.New(rand.NewSource(1234)).Read(buf)
+
 	tests := []struct {
 		name        string
 		marshaller  *ProtoTextMarshaller
@@ -30,11 +34,12 @@ func TestProtoTextMarshaller_Marshal(t *testing.T) {
 			name:       "default options proto marshal",
 			marshaller: &ProtoTextMarshaller{},
 			data: &proto.Test{
-				Name:   "αlpha",
-				Number: 12,
+				Name:    "αlpha",
+				Number:  12,
+				Payload: buf,
 			},
 			wantVersion: protoText0x01,
-			wantPayload: []byte(`name:"αlpha" number:12`),
+			wantPayload: []byte(`name:"αlpha" number:12 payload:"\xc0\x0e]g\xc2uS\x89\xad\xed"`),
 		},
 		{
 			name: "ascii only proto marshal",
@@ -42,11 +47,12 @@ func TestProtoTextMarshaller_Marshal(t *testing.T) {
 				EmitASCII: true,
 			}},
 			data: &proto.Test{
-				Name:   "αlpha",
-				Number: 12,
+				Name:    "αlpha",
+				Number:  12,
+				Payload: buf,
 			},
 			wantVersion: protoText0x01,
-			wantPayload: []byte(`name:"\u03b1lpha" number:12`),
+			wantPayload: []byte(`name:"\u03b1lpha" number:12 payload:"\xc0\x0e]g\xc2uS\x89\xad\xed"`),
 		},
 	}
 	for _, tc := range tests {
@@ -56,10 +62,22 @@ func TestProtoTextMarshaller_Marshal(t *testing.T) {
 			if !errors.Is(gotError, tc.wantErr) {
 				t.Fatalf("unpexected error; got %v, want %v", gotError, tc.wantErr)
 			}
+			if gotError != nil {
+				return
+			}
 			if gotVersion != tc.wantVersion {
 				t.Fatalf("unpexected version; got %v, want %v", gotVersion, tc.wantVersion)
 			}
-			if diff := cmp.Diff(gotPayload, tc.wantPayload); diff != "" {
+
+			// proto encoding output is not stable, we need to compare
+			// against the expected unmarshalled message.
+			// @see https://github.com/golang/protobuf/issues/1121
+			var want proto.Test
+			err := prototext.Unmarshal(gotPayload, &want)
+			if err != nil {
+				t.Fatalf("unpexected error unmarshalling result; got %v", err)
+			}
+			if diff := cmp.Diff(tc.data, &want, cmpopts.IgnoreUnexported(proto.Test{})); diff != "" {
 				t.Errorf("payload mismatch (-got +want):\n%s", diff)
 			}
 		})
