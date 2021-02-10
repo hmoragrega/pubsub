@@ -211,4 +211,21 @@ func TestJSONMarshaller_UnmarshalErrors(t *testing.T) {
 			t.Fatalf("unpexected error; got %v, want %v", got, "foo")
 		}
 	})
+
+	t.Run("instantiating error", func(t *testing.T) {
+		var m JSONMarshaller
+
+		m.registry.types = make(map[string]reflect.Type)
+		m.registry.types["not-valid"] = nil
+
+		_, got := m.Unmarshal("foo", &stubs.ReceivedMessageStub{
+			VersionFunc: func() string { return jsonVersion0x01 },
+			NameFunc:    func() string { return "not-valid" },
+			BodyFunc:    func() []byte { return []byte("foo") },
+		})
+
+		if !errors.Is(got, errInstantiatingType) {
+			t.Fatalf("unpexected error; got %v, want %v", got, "foo")
+		}
+	})
 }

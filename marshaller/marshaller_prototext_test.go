@@ -2,7 +2,6 @@ package marshaller
 
 import (
 	"errors"
-	"reflect"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -60,8 +59,8 @@ func TestProtoTextMarshaller_Marshal(t *testing.T) {
 			if gotVersion != tc.wantVersion {
 				t.Fatalf("unpexected version; got %v, want %v", gotVersion, tc.wantVersion)
 			}
-			if !reflect.DeepEqual(gotPayload, tc.wantPayload) {
-				t.Fatalf("unpexected payload; got %s, want %s", gotPayload, tc.wantPayload)
+			if diff := cmp.Diff(gotPayload, tc.wantPayload); diff != "" {
+				t.Errorf("payload mismatch (-got +want):\n%s", diff)
 			}
 		})
 	}
@@ -229,6 +228,19 @@ func TestProtoTextMarshaller_UnmarshalErrors(t *testing.T) {
 
 		if !errors.Is(got, errUnmarshalling) {
 			t.Fatalf("unpexected error; got %v, want %v", got, "foo")
+		}
+	})
+
+	t.Run("already registered", func(t *testing.T) {
+		var m ProtoTextMarshaller
+
+		if err := m.Register("valid", &proto.Test{}); err != nil {
+			t.Fatalf("unpexected error registering type; got %v", err)
+		}
+
+		got := m.Register("valid", &proto.Test{})
+		if !errors.Is(got, errAlreadyRegistered) {
+			t.Fatalf("unpexected error registering type; got %v; want %v", got, errAlreadyRegistered)
 		}
 	})
 }

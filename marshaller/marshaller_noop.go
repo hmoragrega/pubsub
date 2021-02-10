@@ -35,21 +35,21 @@ func (m *NoOpMarshaller) Marshal(data interface{}) ([]byte, string, error) {
 }
 
 func (m *NoOpMarshaller) Unmarshal(_ string, message pubsub.ReceivedMessage) (*pubsub.Message, error) {
-	msg := &pubsub.Message{
+	var data interface{}
+	switch v := message.Version(); v {
+	case noOpStringVersion:
+		data = string(message.Body())
+	case noOpBytesVersion:
+		data = message.Body()
+	default:
+		return nil, fmt.Errorf("%w: %s", errUnknownVersion, v)
+	}
+
+	return &pubsub.Message{
 		ID:         message.ID(),
 		Name:       message.Name(),
 		Key:        message.Key(),
 		Attributes: message.Attributes(),
-	}
-
-	switch v := message.Version(); v {
-	case noOpStringVersion:
-		msg.Data = string(message.Body())
-	case noOpBytesVersion:
-		msg.Data = message.Body()
-	default:
-		return nil, fmt.Errorf("message version not supported: %s", v)
-	}
-
-	return msg, nil
+		Data:       data,
+	}, nil
 }
