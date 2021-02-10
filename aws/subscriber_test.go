@@ -306,7 +306,7 @@ func TestPubSubIntegration(t *testing.T) {
 			return nil
 		},
 	}
-	err = router.RegisterHandler("topic", mc, pubsub.MessageHandlerFunc(handler))
+	err = router.Register("topic", mc, pubsub.HandlerFunc(handler))
 	if err != nil {
 		t.Fatal("cannot register handler", err)
 	}

@@ -90,10 +90,10 @@ func TestBench(t *testing.T) {
 			return err
 		},
 	}
-	if err := router.RegisterHandler(
+	if err := router.Register(
 		topic,
 		subscriber,
-		pubsub.MessageHandlerFunc(func(ctx context.Context, message *pubsub.Message) error {
+		pubsub.HandlerFunc(func(ctx context.Context, message *pubsub.Message) error {
 			return nil
 		}),
 	); err != nil {

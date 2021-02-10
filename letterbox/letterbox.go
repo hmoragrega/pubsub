@@ -83,8 +83,8 @@ func (x *Letterbox) Request(ctx context.Context, topic string, request pubsub.Me
 	}
 }
 
-// ServerHandler wrap the server handler to accept the responses
-func (x *Letterbox) ServerHandler(handler func(context.Context, *pubsub.Message) (*pubsub.Message, error)) pubsub.MessageHandlerFunc {
+// Handler wrap the server handler to accept the responses
+func (x *Letterbox) Handler(handler func(context.Context, *pubsub.Message) (*pubsub.Message, error)) pubsub.HandlerFunc {
 	return func(ctx context.Context, request *pubsub.Message) error {
 		response, err := handler(ctx, request)
 		if err != nil {

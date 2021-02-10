@@ -26,7 +26,7 @@ const (
 // Consumer consumes messages from a single subscription.
 type consumer struct {
 	subscriber Subscriber
-	handler    MessageHandler
+	handler    Handler
 	topic      string
 	next       <-chan Next
 }
@@ -44,6 +44,10 @@ type Router struct {
 	// DisableAutoAck disables automatic acknowledgement of the
 	// messages. The handler will be responsible for it.
 	DisableAutoAck bool
+
+	// Publisher can be used optionally if a message handler
+	// needs to publish more messages after handling its message.
+	Publisher *Publisher
 
 	// StopTimeout time to wait for all the consumer to stop in a
 	// clean way. No timeout by default.
@@ -70,7 +74,7 @@ type Router struct {
 	mx        sync.RWMutex
 }
 
-func (r *Router) RegisterHandler(topic string, subscriber Subscriber, handler MessageHandler) error {
+func (r *Router) Register(topic string, subscriber Subscriber, handler Handler) error {
 	r.mx.Lock()
 	defer r.mx.Unlock()
 

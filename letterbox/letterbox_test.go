@@ -122,10 +122,10 @@ func TestLetterbox(t *testing.T) {
 		Unmarshaller: &jsonMarshaller,
 	}
 
-	err := router.RegisterHandler(
+	err := router.Register(
 		instanceTopic,
 		&aws.Subscriber{SQS: sqsTest, QueueURL: instanceQueueURL},
-		pubsub.Dispatcher(map[string]pubsub.MessageHandler{
+		pubsub.Dispatcher(map[string]pubsub.Handler{
 			sumResponseEventName:      letterbox,
 			subtractResponseEventName: letterbox,
 		}),
@@ -134,11 +134,11 @@ func TestLetterbox(t *testing.T) {
 		t.Fatal("cannot register instance subscriber", err)
 	}
 
-	err = router.RegisterHandler(
+	err = router.Register(
 		mathSvcTopic,
 		&aws.Subscriber{SQS: sqsTest, QueueURL: mathSvcQueueURL},
-		pubsub.Dispatcher(map[string]pubsub.MessageHandler{
-			sumRequestEventName: letterbox.ServerHandler(
+		pubsub.Dispatcher(map[string]pubsub.Handler{
+			sumRequestEventName: letterbox.Handler(
 				func(ctx context.Context, request *pubsub.Message) (*pubsub.Message, error) {
 					req := request.Data.(*sumRequest)
 					return &pubsub.Message{
@@ -146,7 +146,7 @@ func TestLetterbox(t *testing.T) {
 						Data: &sumResponse{X: req.A + req.B},
 					}, nil
 				}),
-			subtractRequestEventName: letterbox.ServerHandler(
+			subtractRequestEventName: letterbox.Handler(
 				func(ctx context.Context, request *pubsub.Message) (*pubsub.Message, error) {
 					req := request.Data.(*subtractRequest)
 					return &pubsub.Message{

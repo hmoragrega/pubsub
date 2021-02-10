@@ -14,7 +14,7 @@ import (
 
 var (
 	errorDummy   = errors.New("dummy error")
-	handlerDummy = pubsub.MessageHandlerFunc(func(_ context.Context, _ *pubsub.Message) error {
+	handlerDummy = pubsub.HandlerFunc(func(_ context.Context, _ *pubsub.Message) error {
 		return nil
 	})
 )
@@ -33,12 +33,12 @@ func TestRouter_Run(t *testing.T) {
 	t.Run("cannot subscribe twice to the same topic", func(t *testing.T) {
 		var router pubsub.Router
 
-		err := router.RegisterHandler("same", &stubs.SubscriberStub{}, handlerDummy)
+		err := router.Register("same", &stubs.SubscriberStub{}, handlerDummy)
 		if err != nil {
 			t.Fatalf("unexpected error registering the topic: %v", err)
 		}
 
-		err = router.RegisterHandler("same", &stubs.SubscriberStub{}, handlerDummy)
+		err = router.Register("same", &stubs.SubscriberStub{}, handlerDummy)
 		if err == nil {
 			t.Fatalf("unexpected success registering the topic again: %v", err)
 		}
@@ -58,7 +58,7 @@ func TestRouter_Run(t *testing.T) {
 			stopped uint32
 		)
 		for i, s := range [3]*stubs.SubscriberStub{{}, {}, {}} {
-			if err := router.RegisterHandler(strconv.Itoa(i), s, handlerDummy); err != nil {
+			if err := router.Register(strconv.Itoa(i), s, handlerDummy); err != nil {
 				t.Fatalf("cannot register handler %d: %v", i, err)
 			}
 			s.SubscribeFunc = func() (<-chan pubsub.Next, error) {
@@ -89,7 +89,7 @@ func TestRouter_Run(t *testing.T) {
 		var stopped uint32
 		for i, s := range [3]*stubs.SubscriberStub{{}, {}, {}} {
 			i := i
-			if err := router.RegisterHandler(strconv.Itoa(i), s, handlerDummy); err != nil {
+			if err := router.Register(strconv.Itoa(i), s, handlerDummy); err != nil {
 				t.Fatalf("cannot register handler %d: %v", i, err)
 			}
 			s.SubscribeFunc = func() (<-chan pubsub.Next, error) {
@@ -131,7 +131,7 @@ func TestRouter_Run(t *testing.T) {
 		running := make(chan struct{}, consumers)
 
 		for i, s := range [3]*stubs.SubscriberStub{{}, {}, {}} {
-			if err := router.RegisterHandler(strconv.Itoa(i), s, handlerDummy); err != nil {
+			if err := router.Register(strconv.Itoa(i), s, handlerDummy); err != nil {
 				t.Fatalf("cannot register handler %d: %v", i, err)
 			}
 			s.SubscribeFunc = func() (<-chan pubsub.Next, error) {
@@ -213,7 +213,7 @@ func TestRouter_Run(t *testing.T) {
 			},
 		}
 
-		err := router.RegisterHandler(subscriberTopic, s, handlerDummy)
+		err := router.Register(subscriberTopic, s, handlerDummy)
 		if err != nil {
 			t.Fatal("cannot register handler", err)
 		}
@@ -266,7 +266,7 @@ func TestRouter_Run(t *testing.T) {
 					return nil
 				},
 			}
-			err := router.RegisterHandler("foo", s, handlerDummy)
+			err := router.Register("foo", s, handlerDummy)
 			if err != nil {
 				t.Fatal("cannot register handler", err)
 			}
@@ -309,7 +309,7 @@ func TestRouter_Run(t *testing.T) {
 		}
 
 		ctx, cancel := context.WithCancel(context.Background())
-		err := router.RegisterHandler("foo", s, pubsub.MessageHandlerFunc(func(ctx context.Context, _ *pubsub.Message) error {
+		err := router.Register("foo", s, pubsub.HandlerFunc(func(ctx context.Context, _ *pubsub.Message) error {
 			handlerCalls++
 			switch handlerCalls {
 			case 1:
@@ -335,7 +335,7 @@ func TestRouter_Run(t *testing.T) {
 		defer cancel()
 
 		var router pubsub.Router
-		_ = router.RegisterHandler("foo", &stubs.SubscriberStub{
+		_ = router.Register("foo", &stubs.SubscriberStub{
 			SubscribeFunc: func() (<-chan pubsub.Next, error) {
 				return nil, nil
 			},
@@ -357,7 +357,7 @@ func TestRouter_Run(t *testing.T) {
 		if !errors.Is(err, pubsub.ErrRouterAlreadyRunning) {
 			t.Fatalf("unexpected error starting the router twice; got %v", err)
 		}
-		err = router.RegisterHandler("bar", &stubs.SubscriberStub{}, handlerDummy)
+		err = router.Register("bar", &stubs.SubscriberStub{}, handlerDummy)
 		if !errors.Is(err, pubsub.ErrRouterAlreadyRunning) {
 			t.Fatalf("unexpected error registering handlers when router is running; got %v", err)
 		}
@@ -366,7 +366,7 @@ func TestRouter_Run(t *testing.T) {
 		cancel()
 		<-errs
 
-		err = router.RegisterHandler("bar", &stubs.SubscriberStub{}, handlerDummy)
+		err = router.Register("bar", &stubs.SubscriberStub{}, handlerDummy)
 		if !errors.Is(err, pubsub.ErrRouterAlreadyStopped) {
 			t.Fatalf("unexpected error registering handlers when router has stopped; got %v", err)
 		}

@@ -29,10 +29,10 @@ router := pubsub.Router {
 	Unmarshaller: &unmarshaller,
 }
 
-router.RegisterHandler(
+router.Register(
     "some-topic",
     awsQueueSusbcriber,
-    pubsub.MessageHandlerFunc(func(ctx context.Context, message *pubsub.Message) error {
+    pubsub.HandlerFunc(func(ctx context.Context, message *pubsub.Message) error {
         msg := request.Data.(*proto.SomeMessage)
         fmt.Println(msg.Foo)
     })
