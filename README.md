@@ -51,8 +51,9 @@ The message contains this information:
 you've chosen supports serializing it to a `[]byte`.     
 * **ID:** (optional) a `string` with an ID for the message, if not provided, the publisher
  will add one UUIDv4 automatically.     
-* **Name:** (optional) name for the message.     
-* **Key:** (optional) certain pub/sub system can us the key to provide FIFO semantics to
+* **Name:** (optional) name for the message, it can be used to [dispatch the messages](handler.go#L25) using the name as 
+discriminator while sharing the same topic.     
+* **Key:** (optional) certain pub/sub system can leverage the key to provide FIFO semantics to
 messages with the same key within a single topic.      
 * **Attributes:** (optional) a `map[string]string` with even custom metadata.
 
