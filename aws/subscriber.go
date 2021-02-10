@@ -40,10 +40,6 @@ type ackStrategy interface {
 }
 
 type AckConfig struct {
-	// Timeout for the acknowledgements request.
-	// No timeout by default.
-	Timeout time.Duration
-
 	// Async will ack on the message asynchronously returning
 	// immediately with success.
 	//

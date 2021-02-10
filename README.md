@@ -3,7 +3,7 @@
 Package for publishing and consuming messages from pub/sub systems.
 
 Supported:
- * AWS (SNS+SQS)
+ * [AWS](aws/README.md) (SNS+SQS)
 
 ## TL;DR
 Publish a message
@@ -72,14 +72,14 @@ Steps:
 as an `EnvelopeMessage` to the pub/sub system.     
 
 #### Envelope publisher
-This is the specific sender for each pub/sub system, it receives an [envelope](publisher.go#L8), that holds
+This is the specific sender for each pub/sub system, it receives an [envelope](publisher.go#L12), that holds
 the data for the message (this time as `[]byte`), the envelope has also the version of the marshaller 
 used to serialize the data.    
 
-you can check the implementation for Amazon's [SNS service here.](aws/publisher.go#L22)     
+You can check the implementation for Amazon's [SNS service here](aws/publisher.go#L22) as example.     
 
 ### Subscriber
-The subscriber is can subscribe to a single topic in a pub/sub system and consume the 
+The subscriber can subscribe to a single topic in a pub/sub system and consume the topic 
 messages.     
 
 ```go
@@ -93,9 +93,8 @@ type Subscriber interface {
 }
 ```
 
-`Subscribe` method tries to subscribe to the topic, if it succeeds it returns a channel
-that is feed with each new consuming operation, which contain either a new received message
-or, an error.     
+When the subscription succeeds it returns a channel that is feed with each new consuming operation
+, which contains either a new received message or, an error.     
 
 ```go
 type Next struct {
@@ -120,15 +119,17 @@ at the same time.
 To initialize the router pass the unmarshaller and register all the subscribers along with the
  message handler associated to them.     
 
-Call `Run` on the router; it subscribes all the subscribes, if all succeed wit will consume the
-messages in an endless loop, feeding the messages to the handler after unmarshalling the data.     
+Call `Run` on the router; it starts all the subscribers, and if all succeed, it will consume the
+messages in an endless loop, feeding them to the handlers after unmarshalling the message body.     
 
-If the handler does not return an error it will acknowledge the message as long as `DisableAutoAck`.   
+If the handler does not return an error it will acknowledge the message as long as `DisableAutoAck` is false.   
 
 #### Message handler
-Register a message handler in the router using the method `Register`. You'll need to provide:    
+Register a message handler in the router using the method `Register`.    
+
+You'll need to provide:    
 * The topic name     
-* The subscriber that consumer the topic messages    
+* The subscriber that consumes the topic messages    
 * The handler for the topic message    
 
 The handler receives a message and reports the result of handling it
@@ -140,8 +141,9 @@ type Handler interface {
 ```
 
 ##### Publisher handler
-Sometimes a handler will need to publish a new message after handling its own,
-you can do it own the same handler, but if you are using the standard publisher provided
+Sometimes a handler will need to publish a new message after handling its own.    
+
+You could publish on the same handler, but if you are using the standard publisher provided
 you can use its method `Handler` that accepts handler that return a list of messages
 to be published.     
 
@@ -162,36 +164,36 @@ router.Register(
 ```
 
 #### Stopping the router
-By default, the router will stop only once the context given terminates, this means that skips 
+By default, the router will stop only once the given context terminates, this means that skips 
 to the next message if any of the steps fail.     
 
 You can change the behaviour using the different router `Checkpoints` that are invoked on every
 step.    
 
-Each checkpoint will contain the topic, the received message, and the result (it will be nil on success)
+Each checkpoint will receive the topic, the received message, and the result (it will be nil on success).    
 You can use them to log and monitor the functioning of the subscriptions.    
 
 If the return value of a checkpoint is not nil, the router will trigger a shutdown stopping **all**
-the subscribers and returning the error    
+the subscribers and returning the error.    
 
 ```go
 type Checkpoint func(ctx context.Context, topic string, msg ReceivedMessage, err error) error
 ```
 This is the list of checkpoints available    
 
-* `OnReceive`: it is call after the subscriber provides the next result.    
-* `OnUnmarshal`: it is call after the unmarshalling the received message body.    
-* `OnHandler`: it is call after the handler returns.    
-* `OnAck`: it is call with the result of the message acknowledgement.    
+* `OnReceive`: after the subscriber provides the next result.    
+* `OnUnmarshal`: after the unmarshalling the received message body.    
+* `OnHandler`: after the handler returns.    
+* `OnAck`: after acknowledging the message.    
 
 ##### Stop timeout
-By default, the router will trigger the shutdown and wait indefinitely until all the subscriptions
+By default, the router will trigger the shutdown and wait indefinitely until all the subscribers
 stop, then return reporting any errors that may have happened.    
 
 You can use the field `StopTimeout` to set a maximum time to wait for the subscribers to stop.   
 
 ### Marshaller/Unmarshaller
-The (un)marshaller sits between the pub/sub system encoding and decoding the messages to abstract.    
+The (un)marshaller sits between the pub/sub system encoding and decoding the message data.    
 
 ```go
 // Marshals the contents of message data.
@@ -206,15 +208,14 @@ type Unmarshaller interface {
 }
 ```    
 
-The provided un/marshaller are:    
- * JSON: encodes the message data as a JSON string     
- * ProtoText: uses go proto v2 to encode `proto.Message`.    
+The provided un/marshallers are:    
+ * JSON: encodes the message data as a JSON string, and decodes into any registered struct either by the event name, or the topic     
+ * ProtoText: uses go-proto-sdk v2 to encode data implementing the `proto.Message` interface.    
  * NoOp: accepts either a `string` or a `[]byte` as data payload.    
 
 #### Received Message Version
 The version included in the `Envelope/ReceivedMessage` is not the version of data but the version
 of the marshaller used to encode this data.    
 
-This is important since this the unmarshaller in the router can check if the message was marshalled 
-with the proper marshaller, or being able to migrate the marshaller message while still supporting 
-the old messages in a long-lived topic.    
+This is important since having this info helps the unmarshaller to understand if it can decode the payload
+or even allows migrating the marshaller in long-lived topic supporting old messages.    
