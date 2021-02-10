@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/hmoragrega/pubsub"
-	"github.com/hmoragrega/pubsub/internal/env"
 	"github.com/hmoragrega/pubsub/internal/proto"
 	"github.com/hmoragrega/pubsub/marshaller"
 )
@@ -23,9 +22,9 @@ func TestBench(t *testing.T) {
 	defer cancel()
 
 	var (
-		messagesCount, _ = strconv.Atoi(env.GetEnvOrDefault("BENCH_MESSAGES", "1000"))
-		asyncBatch, _    = strconv.Atoi(env.GetEnvOrDefault("BENCH_ASYNC_BATCH", "10"))
-		messageSize, _   = strconv.Atoi(env.GetEnvOrDefault("BENCH_MESSAGE_SIZE", "10"))
+		messagesCount, _ = strconv.Atoi(getEnvOrDefault("BENCH_MESSAGES", "1000"))
+		asyncBatch, _    = strconv.Atoi(getEnvOrDefault("BENCH_ASYNC_BATCH", "10"))
+		messageSize, _   = strconv.Atoi(getEnvOrDefault("BENCH_MESSAGE_SIZE", "10"))
 		topic            = fmt.Sprintf("benchmark-%d", rand.Int31())
 		queue            = fmt.Sprintf("%s-queue", topic)
 		topicARN         = createTestTopic(ctx, t, topic)
@@ -50,8 +49,7 @@ func TestBench(t *testing.T) {
 		Marshaller: msgMarshaller,
 	}
 
-	t.Logf("sending %d messages\n", messagesCount)
-	if err := publishMessages(publisher, topic, messagesCount, messageSize); err != nil {
+	if err := publishMessages(t, publisher, topic, messagesCount, messageSize); err != nil {
 		t.Fatal("error publishing messages", err)
 	}
 
@@ -132,7 +130,7 @@ func TestBench(t *testing.T) {
 	}
 }
 
-func publishMessages(publisher pubsub.Publisher, topic string, messagesCount, messageSize int) error {
+func publishMessages(t *testing.T, publisher pubsub.Publisher, topic string, messagesCount, messageSize int) error {
 	rand.Seed(time.Now().UnixNano())
 
 	messagesLeft := messagesCount
@@ -177,6 +175,8 @@ func publishMessages(publisher pubsub.Publisher, topic string, messagesCount, me
 		return err
 	}
 
+	t.Logf("sending %d messages\n", messagesCount)
+
 	start := time.Now()
 
 	for ; messagesLeft > 0; messagesLeft-- {
@@ -192,7 +192,7 @@ func publishMessages(publisher pubsub.Publisher, topic string, messagesCount, me
 
 	elapsed := time.Now().Sub(start)
 
-	fmt.Printf("added %d messages in %s, %f msg/s\n", messagesCount, elapsed, float64(messagesCount)/elapsed.Seconds())
+	t.Logf("added %d messages in %s, %f msg/s\n", messagesCount, elapsed, float64(messagesCount)/elapsed.Seconds())
 
 	return nil
 }

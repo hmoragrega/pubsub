@@ -26,7 +26,8 @@ test: up integration
 
 integration:
 	@mkdir -p coverage
-	@go test -race -v -tags=integration -coverpkg=./... -coverprofile=./coverage/integration.cov ./...
+	@go test -race -v -tags=integration -coverpkg=./... -coverprofile=./coverage/base.cov ./...
+	@cd aws && go test -race -v -tags=integration -coverpkg=./... -coverprofile=../coverage/aws.cov ./...
 
 .PHONY: clean
 clean:

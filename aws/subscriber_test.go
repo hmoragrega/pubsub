@@ -20,7 +20,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/sns"
 	"github.com/aws/aws-sdk-go/service/sqs"
 	"github.com/hmoragrega/pubsub"
-	"github.com/hmoragrega/pubsub/internal/env"
 	"github.com/hmoragrega/pubsub/marshaller"
 )
 
@@ -34,11 +33,11 @@ func TestMain(m *testing.M) {
 
 	cfg := aws.Config{
 		Credentials: credentials.NewEnvCredentials(),
-		Region:      aws.String(env.GetEnvOrDefault("AWS_REGION", "eu-west-3")),
+		Region:      aws.String(getEnvOrDefault("AWS_REGION", "eu-west-3")),
 	}
 	if os.Getenv("AWS") != "true" {
 		cfg.Credentials = credentials.NewStaticCredentials("id", "secret", "token")
-		cfg.Endpoint = aws.String(env.GetEnvOrDefault("AWS_ENDPOINT", "localhost:4100"))
+		cfg.Endpoint = aws.String(getEnvOrDefault("AWS_ENDPOINT", "localhost:4100"))
 		cfg.DisableSSL = aws.Bool(true)
 	}
 	if os.Getenv("LOGGING") == "true" {
@@ -558,4 +557,11 @@ func (s *sqsStub) DeleteMessageBatch(input *sqs.DeleteMessageBatchInput) (*sqs.D
 
 func (s *sqsStub) DeleteMessageWithContext(ctx aws.Context, input *sqs.DeleteMessageInput, opts ...request.Option) (*sqs.DeleteMessageOutput, error) {
 	return s.DeleteMessageWithContext(ctx, input, opts...)
+}
+
+func getEnvOrDefault(key, defaultValue string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return defaultValue
 }

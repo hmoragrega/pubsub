@@ -1,11 +1,11 @@
 package marshaller
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 
 	"github.com/hmoragrega/pubsub"
-	"github.com/pkg/errors"
 	"google.golang.org/protobuf/encoding/prototext"
 	"google.golang.org/protobuf/proto"
 )
