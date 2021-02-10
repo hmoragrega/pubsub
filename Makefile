@@ -32,15 +32,15 @@ integration:
 .PHONY: clean
 clean:
 	@rm -rf $(COVERAGE_FILES)
-	@rm -rf $(COVERAGE_FILE)
+	@rm -rf coverage.*
 
 .PHONY: coverage
 coverage: clean test coverage-merge
-	@go tool cover -func=$(COVERAGE_FILE)
+	@cd aws && go tool cover -func=../$(COVERAGE_FILE)
 
 .PHONY: coverage-html
 coverage-html: clean test coverage-merge
-	@go tool cover -html=$(COVERAGE_FILE)
+	@cd aws && go tool cover -html=../$(COVERAGE_FILE)
 
 .PHONY: coverage-merge
 coverage-merge:
