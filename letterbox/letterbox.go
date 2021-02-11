@@ -31,15 +31,23 @@ type Response struct {
 	Miss bool
 }
 
+// Letterbox introduces request-response semantics for the underlying
+// pub/sub system.
+//
+// It publishes a request to a topic, injecting the request ID and the
+// unique response topic for this letterbox, waiting for a response.
 type Letterbox struct {
+	// Publisher used to forward the requests.
+	// This field is required.
+	Publisher pubsub.Publisher
+
+	// Topic unique response topic for this instance.
+	// This field is required.
+	Topic string
+
 	// OnResponse is an optional callback that will be triggered
 	// when a response is received in this letterbox.
 	OnResponse func(response *Response)
-
-	Publisher pubsub.Publisher
-
-	// response topic for this instance.
-	Topic string
 
 	requests map[string]requestAddress
 	mx       sync.RWMutex
