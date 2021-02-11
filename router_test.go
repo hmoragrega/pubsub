@@ -185,7 +185,7 @@ func TestRouter_Run(t *testing.T) {
 		}
 		router := pubsub.Router{
 			Unmarshaller: pubsub.UnmarshallerFunc(func(_ string, _ pubsub.ReceivedMessage) (*pubsub.Message, error) {
-				return nil, nil
+				return &pubsub.Message{}, nil
 			}),
 			OnReceive: func(_ context.Context, topic string, message pubsub.ReceivedMessage, err error) error {
 				return verifyCheckpoint("OnReceive", topic, message, err)
@@ -298,7 +298,7 @@ func TestRouter_Run(t *testing.T) {
 			handlerCalls      int
 		)
 		router := pubsub.Router{
-			Unmarshaller: pubsub.UnmarshallerFunc(func(_ string, _ pubsub.ReceivedMessage) (*pubsub.Message, error) {
+			Unmarshaller: pubsub.UnmarshallerFunc(func(topic string, msg pubsub.ReceivedMessage) (*pubsub.Message, error) {
 				unmarshallerCalls++
 				if unmarshallerCalls == 1 {
 					return nil, errorDummy

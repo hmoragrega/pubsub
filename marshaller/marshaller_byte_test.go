@@ -6,10 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/hmoragrega/pubsub"
-	"github.com/hmoragrega/pubsub/internal/proto"
 	"github.com/hmoragrega/pubsub/internal/stubs"
 )
 
@@ -154,8 +151,23 @@ func TestByteMarshaller_Unmarshal(t *testing.T) {
 			if !errors.Is(gotError, tc.wantErr) {
 				t.Fatalf("unpexected error; got %v, want %v", gotError, tc.wantErr)
 			}
-			if diff := cmp.Diff(gotMessage, tc.wantMessage, cmpopts.IgnoreUnexported(proto.Test{})); diff != "" {
-				t.Errorf("message mismatch (-got +want):\n%s", diff)
+			if gotError != nil {
+				return
+			}
+			if got, want := gotMessage.ID, tc.wantMessage.ID; got != want {
+				t.Errorf("unexpected ID; got %v, want %v", got, want)
+			}
+			if got, want := gotMessage.Name, tc.wantMessage.Name; got != want {
+				t.Errorf("unexpected name; got %v, want %v", got, want)
+			}
+			if got, want := gotMessage.Key, tc.wantMessage.Key; got != want {
+				t.Errorf("unexpected key; got %v, want %v", got, want)
+			}
+			if got, want := gotMessage.Data, tc.wantMessage.Data; !reflect.DeepEqual(got, want) {
+				t.Errorf("unexpected data; got %v, want %v", got, want)
+			}
+			if got, want := gotMessage.Attributes, tc.wantMessage.Attributes; !reflect.DeepEqual(got, want) {
+				t.Errorf("unexpected data; got %v, want %v", got, want)
 			}
 		})
 	}

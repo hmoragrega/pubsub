@@ -1,6 +1,14 @@
 package pubsub
 
-import "context"
+import (
+	"context"
+	"errors"
+	"sync"
+)
+
+var (
+	ErrReceivedMessageNotAvailable = errors.New("received message not available")
+)
 
 // MessageID a slice of bytes representing
 // a unique message ID
@@ -49,4 +57,41 @@ type Message struct {
 	Data interface{}
 	// Message attributes
 	Attributes Attributes
+
+	received ReceivedMessage
+	mx       sync.RWMutex
+}
+
+// Ack acknowledges the message.
+func (m *Message) Ack(ctx context.Context) error {
+	m.mx.RLock()
+	defer m.mx.RUnlock()
+
+	if m.received == nil {
+		return ErrReceivedMessageNotAvailable
+	}
+
+	return m.received.Ack(ctx)
+}
+
+// AttachReceivedMessage attaches the received message
+func (m *Message) AttachReceivedMessage(message ReceivedMessage) {
+	m.mx.Lock()
+	defer m.mx.Unlock()
+
+	if m != nil {
+		m.received = message
+	}
+}
+
+// SetAttribute sets an attribute.
+func (m *Message) SetAttribute(key, value string) {
+	m.mx.Lock()
+	defer m.mx.Unlock()
+
+	if m.Attributes == nil {
+		m.Attributes = make(Attributes)
+	}
+
+	m.Attributes[key] = value
 }

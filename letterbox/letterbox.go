@@ -51,18 +51,18 @@ type Letterbox struct {
 // Request sends the request and waits until:
 // - the response is available.
 // - the given context is done.
-func (x *Letterbox) Request(ctx context.Context, topic string, request pubsub.Message) (*pubsub.Message, error) {
+func (x *Letterbox) Request(ctx context.Context, topic string, request *pubsub.Message) (*pubsub.Message, error) {
 	requestID := request.ID
 	if len(requestID) == 0 {
 		requestID = pubsub.NewID()
 	}
 
 	// inject the attributes so we know where to answer.
-	x.setAttribute(&request, responseTopicAttribute, x.Topic)
-	x.setAttribute(&request, requestIDAttribute, requestID)
-	x.setAttribute(&request, requestedAtAttribute, time.Now().Format(time.RFC3339Nano))
+	request.SetAttribute(responseTopicAttribute, x.Topic)
+	request.SetAttribute(requestIDAttribute, requestID)
+	request.SetAttribute(requestedAtAttribute, time.Now().Format(time.RFC3339Nano))
 
-	c, err := x.waitFor(requestID, &request)
+	c, err := x.waitFor(requestID, request)
 	if err != nil {
 		return nil, err
 	}
@@ -109,10 +109,10 @@ func (x *Letterbox) Response(ctx context.Context, request, response *pubsub.Mess
 		return fmt.Errorf("missing request time")
 	}
 
-	x.setAttribute(response, requestIDAttribute, requestID)
-	x.setAttribute(response, requestedAtAttribute, requestedAt)
+	response.SetAttribute(requestIDAttribute, requestID)
+	response.SetAttribute(requestedAtAttribute, requestedAt)
 
-	if err := x.Publisher.Publish(ctx, topic, *response); err != nil {
+	if err := x.Publisher.Publish(ctx, topic, response); err != nil {
 		return fmt.Errorf("cannot send response: %v", err)
 	}
 	return nil
@@ -204,12 +204,4 @@ func (x *Letterbox) delete(id string) {
 	x.mx.Lock()
 	delete(x.requests, id)
 	x.mx.Unlock()
-}
-
-func (x *Letterbox) setAttribute(message *pubsub.Message, key, value string) {
-	if message.Attributes == nil {
-		message.Attributes = make(pubsub.Attributes)
-	}
-
-	message.Attributes[key] = value
 }

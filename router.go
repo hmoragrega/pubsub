@@ -232,14 +232,12 @@ func (r *Router) consume(ctx context.Context, c *consumer) error {
 			continue
 		}
 
+		message.AttachReceivedMessage(msg)
+
 		err = c.handler.HandleMessage(ctx, message)
 		if err := r.check(ctx, r.OnHandler, c, msg, err); err != nil {
 			return err
 		}
-		if err != nil {
-			continue
-		}
-
 		if r.DisableAutoAck {
 			continue
 		}

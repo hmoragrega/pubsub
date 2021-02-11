@@ -52,13 +52,10 @@ func TestLetterbox(t *testing.T) {
 	_ = jsonMarshaller.Register(subtractResponseEventName, &subtractResponse{})
 
 	channelsPub := channels.Publisher{}
-	publisher := pubsub.StdPublisher{
-		Publisher:  &channelsPub,
-		Marshaller: &jsonMarshaller,
-	}
+	publisher := pubsub.NewPublisher(&channelsPub, &jsonMarshaller)
 
 	letterbox := Letterbox{
-		Publisher: &publisher,
+		Publisher: publisher,
 		Topic:     instanceTopic,
 	}
 
@@ -110,7 +107,7 @@ func TestLetterbox(t *testing.T) {
 	}()
 
 	// do a sum
-	res, err := letterbox.Request(ctx, mathSvcTopic, pubsub.Message{
+	res, err := letterbox.Request(ctx, mathSvcTopic, &pubsub.Message{
 		Name: sumRequestEventName,
 		Data: &sumRequest{A: 9, B: 5},
 	})
@@ -122,7 +119,7 @@ func TestLetterbox(t *testing.T) {
 	}
 
 	// do a subtraction
-	res, err = letterbox.Request(ctx, mathSvcTopic, pubsub.Message{
+	res, err = letterbox.Request(ctx, mathSvcTopic, &pubsub.Message{
 		Name: subtractRequestEventName,
 		Data: &subtractRequest{A: 2, B: 8},
 	})
@@ -143,4 +140,8 @@ func TestLetterbox(t *testing.T) {
 			t.Fatal("router stopped with an error!", err)
 		}
 	}
+}
+
+func TestLetterbox_Failures(t *testing.T) {
+
 }

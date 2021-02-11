@@ -39,28 +39,22 @@ func TestBench(t *testing.T) {
 		t.Fatal("cannot register type for proto message", err)
 	}
 
-	publisher := &pubsub.StdPublisher{
-		Publisher: &Publisher{
-			SNS: snsTest,
-			TopicARNs: map[string]string{
-				topic: topicARN,
-			},
-		},
-		Marshaller: msgMarshaller,
-	}
+	publisher := pubsub.NewPublisher(
+		NewSNSPublisher(snsTest, map[string]string{
+			topic: topicARN,
+		}),
+		msgMarshaller,
+	)
 
 	if err := publishMessages(t, publisher, topic, messagesCount, messageSize); err != nil {
 		t.Fatal("error publishing messages", err)
 	}
 
-	subscriber := &Subscriber{
-		SQS:      sqsTest,
-		QueueURL: queueURL,
-		AckConfig: AckConfig{
-			BatchSize: asyncBatch,
-		},
-	}
-
+	subscriber := NewSQSSubscriber(
+		sqsTest,
+		queueURL,
+		WithAck(AckConfig{BatchSize: asyncBatch}),
+	)
 	counter := NewCounter()
 
 	var wg sync.WaitGroup
@@ -147,7 +141,7 @@ func publishMessages(t *testing.T, publisher pubsub.Publisher, topic string, mes
 			defer wg.Done()
 
 			for msg := range addMsg {
-				if err := publisher.Publish(context.Background(), topic, *msg); err != nil {
+				if err := publisher.Publish(context.Background(), topic, msg); err != nil {
 					panic(err)
 				}
 				atomic.AddInt32(&count, 1)

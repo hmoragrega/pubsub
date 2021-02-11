@@ -55,7 +55,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestSubscribe_NextError(t *testing.T) {
-	c := &Subscriber{SQS: sqsTest, QueueURL: "bad queue"}
+	c := &Subscriber{sqs: sqsTest, queueURL: "bad queue"}
 	next, err := c.Subscribe()
 	if err != nil {
 		t.Fatal("failed to start consumer", err)
@@ -74,7 +74,7 @@ func TestSubscribe_NextError(t *testing.T) {
 
 func TestSubscribe_SubscribeErrors(t *testing.T) {
 	t.Run("invalid SQS service", func(t *testing.T) {
-		s := &Subscriber{SQS: nil, QueueURL: "foo"}
+		s := &Subscriber{sqs: nil, queueURL: "foo"}
 		_, err := s.Subscribe()
 		if !errors.Is(err, ErrMissingConfig) {
 			t.Fatalf("expected config missing error; got %v", err)
@@ -82,7 +82,7 @@ func TestSubscribe_SubscribeErrors(t *testing.T) {
 	})
 
 	t.Run("invalid queue URL", func(t *testing.T) {
-		s := &Subscriber{SQS: sqsTest, QueueURL: ""}
+		s := &Subscriber{sqs: sqsTest, queueURL: ""}
 		_, err := s.Subscribe()
 		if !errors.Is(err, ErrMissingConfig) {
 			t.Fatalf("expected config missing error; got %v", err)
@@ -90,7 +90,7 @@ func TestSubscribe_SubscribeErrors(t *testing.T) {
 	})
 
 	t.Run("already started", func(t *testing.T) {
-		s := &Subscriber{SQS: sqsTest, QueueURL: "foo"}
+		s := &Subscriber{sqs: sqsTest, queueURL: "foo"}
 		_, err := s.Subscribe()
 		if err != nil {
 			t.Fatalf("unexpected error; got %v", err)
@@ -109,7 +109,7 @@ func TestSubscribe_SubscribeErrors(t *testing.T) {
 
 func TestSubscribe_StopErrors(t *testing.T) {
 	t.Run("already started", func(t *testing.T) {
-		s := &Subscriber{SQS: sqsTest, QueueURL: "foo"}
+		s := &Subscriber{sqs: sqsTest, queueURL: "foo"}
 		_, err := s.Subscribe()
 		if err != nil {
 			t.Fatalf("unexpected error; got %v", err)
@@ -127,7 +127,7 @@ func TestSubscribe_StopErrors(t *testing.T) {
 	})
 	t.Run("context terminated", func(t *testing.T) {
 		var svc sqsStub
-		s := Subscriber{SQS: &svc, QueueURL: "foo"}
+		s := Subscriber{sqs: &svc, queueURL: "foo"}
 
 		var block chan struct{}
 		svc.ReceiveMessageWithContextFunc = func(_ aws.Context, _ *sqs.ReceiveMessageInput, _ ...request.Option) (*sqs.ReceiveMessageOutput, error) {
@@ -161,7 +161,7 @@ func TestSubscribe_AckFailsOnStoppedSubscribers(t *testing.T) {
 func TestSubscribe_NextErrors(t *testing.T) {
 	t.Run("poisonous messages", func(t *testing.T) {
 		var svc sqsStub
-		s := Subscriber{SQS: &svc, QueueURL: "foo"}
+		s := Subscriber{sqs: &svc, queueURL: "foo"}
 
 		poisonousMessages := []*sqs.Message{
 			{}, // missing id
@@ -230,12 +230,12 @@ func TestPubSubIntegration(t *testing.T) {
 	Must(AttachQueueForwardingPolicy(ctx, sqsTest, queueURL, queueARN, topicARN))
 
 	// Create SNS publisher
-	publisher := pubsub.StdPublisher{
-		Publisher: &Publisher{SNS: snsTest, TopicARNs: map[string]string{
+	publisher := pubsub.NewPublisher(
+		NewSNSPublisher(snsTest, map[string]string{
 			testTopic: topicARN,
-		}},
-		Marshaller: &jsonMarshaller,
-	}
+		}),
+		&jsonMarshaller,
+	)
 
 	_ = jsonMarshaller.Register(eventName, &testStruct{})
 	entity := &testStruct{
@@ -243,7 +243,7 @@ func TestPubSubIntegration(t *testing.T) {
 		Name: "John Doe",
 	}
 
-	err := publisher.Publish(ctx, testTopic, pubsub.Message{
+	err := publisher.Publish(ctx, testTopic, &pubsub.Message{
 		Name: eventName,
 		Key:  strconv.Itoa(entity.ID),
 		Data: entity,
@@ -256,8 +256,8 @@ func TestPubSubIntegration(t *testing.T) {
 	}
 
 	mc := &Subscriber{
-		SQS:      sqsTest,
-		QueueURL: queueURL,
+		sqs:      sqsTest,
+		queueURL: queueURL,
 	}
 
 	handler := func(_ context.Context, message *pubsub.Message) error {
@@ -363,9 +363,9 @@ func TestSubscriberAsyncAck(t *testing.T) {
 	}
 
 	mc := &Subscriber{
-		SQS:      sqsSvc,
-		QueueURL: "foo",
-		AckConfig: AckConfig{
+		sqs:      sqsSvc,
+		queueURL: "foo",
+		ackConfig: AckConfig{
 			BatchSize: batchSize,
 		},
 	}
@@ -474,9 +474,9 @@ func TestSubscriberAsyncAckTicker(t *testing.T) {
 	}
 
 	s := &Subscriber{
-		SQS:      sqsSvc,
-		QueueURL: "foo",
-		AckConfig: AckConfig{
+		sqs:      sqsSvc,
+		queueURL: "foo",
+		ackConfig: AckConfig{
 			Async:      true,
 			BatchSize:  2,
 			FlushEvery: 25 * time.Millisecond,

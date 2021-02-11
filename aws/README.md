@@ -9,13 +9,13 @@ We use SQS to publish messages to a topic ARN, so to be able to send messages th
 publisher needs to translate the general topic name to its ARN.
 
 ```go
-sqsPublisher := aws.Publisher{
-    SNS: snsService,
-    TopicARNs: map[string]string{
+sqsPublisher := aws.NewSNSPublisher(
+    snsService,
+    map[string]string{
         "topic-one": "arn:aws:sns:us-east-2:444455556666:topic-one"
         "topic-two": "arn:aws:sns:us-east-2:444455556666:topic-two"
-    },
-}
+    }
+)
 ```
 
 Note: it can publish directly to topics starting with `arn:aws:sns`  
@@ -23,10 +23,10 @@ Note: it can publish directly to topics starting with `arn:aws:sns`
 ## Queue Subscriber
 We use SQS to consume messages from a queue, using its queue URL:
 ```go
-snsSubscriber := aws.Subscriber{
-    SQS: sqsService,
-    QueueURL: "https://sqs.us-east-2.amazonaws.com/123456789012/MyQueue"
-}
+snsSubscriber := aws.NewSQSSubscriber(
+    sqsService,
+    "https://sqs.us-east-2.amazonaws.com/123456789012/MyQueue"
+)
 ```
 The subscriber will use [long polling](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-short-and-long-polling.html)
 for 20s max, and will get a batch of 10 messages on each consumption,
@@ -70,7 +70,7 @@ the topic to send messages to the queue
 This package provides a helper that will a single topic to publish to a single queue
 ```go
 subscriptionARN, err := aws.Subscribe(ctx, snsService, topicARN, queueARN)
-err := AttachQueueForwardingPolicy(ctx, sqsService, queueURL, queueARN, topicARN)
+err := aws.AttachQueueForwardingPolicy(ctx, sqsService, queueURL, queueARN, topicARN)
 ```
 
 ### Raw Delivery

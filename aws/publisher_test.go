@@ -13,7 +13,7 @@ import (
 func TestPublisher_PublishFailures(t *testing.T) {
 	t.Run("topic not found", func(t *testing.T) {
 		var pub Publisher
-		err := pub.Publish(context.Background(), "foo", pubsub.Envelope{})
+		err := pub.Publish(context.Background(), "foo", &pubsub.Envelope{})
 		if !errors.Is(err, ErrTopicNotFound) {
 			t.Fatalf("expected error %v; got %v", ErrTopicNotFound, err)
 		}
@@ -21,12 +21,12 @@ func TestPublisher_PublishFailures(t *testing.T) {
 
 	t.Run("publish failure", func(t *testing.T) {
 		pub := Publisher{
-			SNS: badSNS(),
-			TopicARNs: map[string]string{
+			sns: badSNS(),
+			topicARNs: map[string]string{
 				"foo": "arn-foo",
 			},
 		}
-		err := pub.Publish(context.Background(), "foo", pubsub.Envelope{
+		err := pub.Publish(context.Background(), "foo", &pubsub.Envelope{
 			ID:      "123",
 			Name:    "name",
 			Key:     "key",

@@ -72,16 +72,13 @@ type AckConfig struct {
 // Subscriber for AWS SQS.
 type Subscriber struct {
 	// SQS Service.
-	SQS sqsSvc
+	sqs sqsSvc
 
 	// QueueURL for the SQS queue.
-	QueueURL string
-
-	// @TODO
-	// AutoSubscribe AutoSubscribe
+	queueURL string
 
 	// AckConfig configuration the acknowledgements behaviour
-	AckConfig AckConfig
+	ackConfig AckConfig
 
 	next        chan pubsub.Next
 	ackStrategy ackStrategy
@@ -89,6 +86,25 @@ type Subscriber struct {
 	cancel      func()
 	status      status
 	statusMx    sync.RWMutex
+}
+
+// WithAck configures the acknowledgements behaviour
+func WithAck(cfg AckConfig) func(s *Subscriber) {
+	return func(s *Subscriber) {
+		s.ackConfig = cfg
+	}
+}
+
+// NewSQSSubscriber creates a new SQS subscriber.
+func NewSQSSubscriber(sqs *sqs.SQS, queueURL string, opts ...func(s *Subscriber)) *Subscriber {
+	s := &Subscriber{
+		sqs:      sqs,
+		queueURL: queueURL,
+	}
+	for _, o := range opts {
+		o(s)
+	}
+	return s
 }
 
 // Subscribe subscribes to a SQS queue.
@@ -99,17 +115,17 @@ func (s *Subscriber) Subscribe() (<-chan pubsub.Next, error) {
 	if s.status >= started {
 		return nil, ErrAlreadyStarted
 	}
-	if s.SQS == nil {
+	if s.sqs == nil {
 		return nil, fmt.Errorf("%w: SQS service not set", ErrMissingConfig)
 	}
-	if s.QueueURL == "" {
+	if s.queueURL == "" {
 		return nil, fmt.Errorf("%w: QueueURL cannot be empty", ErrMissingConfig)
 	}
 
-	if s.AckConfig.Async || s.AckConfig.BatchSize > 0 {
-		s.ackStrategy = newAsyncAck(s.SQS, s.QueueURL, s.AckConfig)
+	if s.ackConfig.Async || s.ackConfig.BatchSize > 0 {
+		s.ackStrategy = newAsyncAck(s.sqs, s.queueURL, s.ackConfig)
 	} else {
-		s.ackStrategy = newSyncAck(s.SQS, s.QueueURL)
+		s.ackStrategy = newSyncAck(s.sqs, s.queueURL)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -151,8 +167,8 @@ func (s *Subscriber) consume(ctx context.Context) {
 	defer close(s.stopped)
 
 	for {
-		out, err := s.SQS.ReceiveMessageWithContext(ctx, &sqs.ReceiveMessageInput{
-			QueueUrl:              &s.QueueURL,
+		out, err := s.sqs.ReceiveMessageWithContext(ctx, &sqs.ReceiveMessageInput{
+			QueueUrl:              &s.queueURL,
 			MaxNumberOfMessages:   &maxNumberOfMessages,
 			WaitTimeSeconds:       &waitTimeSeconds,
 			AttributeNames:        allAttributes,

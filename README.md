@@ -13,15 +13,13 @@ Supported:
 ## TL;DR
 Publish a message
 ```go
-publisher := pubsub.Publisher{
-	Publisher:  awsPublisher,
-	Marshaller: &marshaller.ProtoTextMarshaller{},
-}
+publisher := pubsub.NewPublisher(
+	awsSNSPublisher,
+	&marshaller.ProtoTextMarshaller{},
+)
 
 publisher.Publish(ctx, "some-topic", &pubsub.Message{
-    Data: &proto.SomeMessage {
-    	Foo: "bar",
-    },
+    Data: &proto.SomeMessage {Foo: "bar"},
 })
 ```
 
@@ -30,13 +28,13 @@ Consume messages
 var unmarshaller marshaller.ProtoTextMarshaller
 unmarshaller.Register("some-topic", &proto.SomeMessage{})
 
-router := pubsub.Router {
+router := pubsub.Router{
 	Unmarshaller: &unmarshaller,
 }
 
 router.Register(
     "some-topic",
-    awsQueueSusbcriber,
+    awsSQSSusbcriber,
     pubsub.HandlerFunc(func(ctx context.Context, message *pubsub.Message) error {
         msg := request.Data.(*proto.SomeMessage)
         fmt.Println(msg.Foo)
@@ -67,7 +65,7 @@ The publisher sends the message to a given topic using the underlying pub/sub sy
 
 ```go
 type Publisher interface {
-	Publish(ctx context.Context, topic string, message Message) error
+	Publish(ctx context.Context, topic string, messages ...*Message) error
 }
 ``` 
 

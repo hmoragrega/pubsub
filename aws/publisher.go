@@ -16,19 +16,27 @@ var ErrTopicNotFound = errors.New("could not find topic ARN")
 
 // Publisher SNS publisher.
 type Publisher struct {
-	SNS       *sns.SNS
-	TopicARNs map[string]string
+	sns       *sns.SNS
+	topicARNs map[string]string
+}
+
+// NewSNSPublisher creates a new SNS publisher.
+func NewSNSPublisher(sns *sns.SNS, topicARNs map[string]string) *Publisher {
+	return &Publisher{
+		sns:       sns,
+		topicARNs: topicARNs,
+	}
 }
 
 // Publish a message trough SNS.
-func (p *Publisher) Publish(ctx context.Context, topic string, env pubsub.Envelope) error {
+func (p *Publisher) Publish(ctx context.Context, topic string, envelopes ...*pubsub.Envelope) error {
 	var topicARN string
 
 	switch pos := strings.Index(strings.ToLower(topic), "arn:aws:sns"); pos {
 	case 0:
 		topicARN = topic
 	default:
-		arn, ok := p.TopicARNs[topic]
+		arn, ok := p.topicARNs[topic]
 		if !ok {
 			return fmt.Errorf("%w: %s", ErrTopicNotFound, topic)
 		}
@@ -42,15 +50,17 @@ func (p *Publisher) Publish(ctx context.Context, topic string, env pubsub.Envelo
 	//		key = "void"
 	//	}
 
-	_, err := p.SNS.PublishWithContext(ctx, &sns.PublishInput{
-		TopicArn:          &topicARN,
-		Message:           stringPtr(env.Body),
-		MessageAttributes: encodeAttributes(&env),
-		//MessageDeduplicationId: &base64ID, // @TODO FIFO only
-		//MessageGroupId:         &key,      // @TODO FIFO only
-	})
-	if err != nil {
-		return fmt.Errorf("cannot publish message: %w", err)
+	for _, env := range envelopes {
+		_, err := p.sns.PublishWithContext(ctx, &sns.PublishInput{
+			TopicArn:          &topicARN,
+			Message:           stringPtr(env.Body),
+			MessageAttributes: encodeAttributes(env),
+			//MessageDeduplicationId: &base64ID, // @TODO FIFO only
+			//MessageGroupId:         &key,      // @TODO FIFO only
+		})
+		if err != nil {
+			return fmt.Errorf("cannot publish message %s: %w", env.ID, err)
+		}
 	}
 	return nil
 }

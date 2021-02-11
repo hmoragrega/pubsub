@@ -27,7 +27,9 @@ var (
 // ProtoTextMarshaller marshals and unmarshals protocol
 // buffer messages as the textproto format.
 type ProtoTextMarshaller struct {
-	MarshalOptions   prototext.MarshalOptions
+	// MarshalOptions configures the marshalling options.
+	MarshalOptions prototext.MarshalOptions
+	// MarshalOptions configures the unmarshalling options.
 	UnmarshalOptions prototext.UnmarshalOptions
 
 	registry typeRegistry

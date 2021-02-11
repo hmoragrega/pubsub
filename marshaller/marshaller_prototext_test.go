@@ -3,10 +3,9 @@ package marshaller
 import (
 	"errors"
 	"math/rand"
+	"reflect"
 	"testing"
 
-	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/hmoragrega/pubsub"
 	"github.com/hmoragrega/pubsub/internal/proto"
 	"github.com/hmoragrega/pubsub/internal/stubs"
@@ -72,13 +71,17 @@ func TestProtoTextMarshaller_Marshal(t *testing.T) {
 			// proto encoding output is not stable, we need to compare
 			// against the expected unmarshalled message.
 			// @see https://github.com/golang/protobuf/issues/1121
-			var want proto.Test
-			err := prototext.Unmarshal(gotPayload, &want)
+			var got proto.Test
+			err := prototext.Unmarshal(gotPayload, &got)
 			if err != nil {
 				t.Fatalf("unpexected error unmarshalling result; got %v", err)
 			}
-			if diff := cmp.Diff(tc.data, &want, cmpopts.IgnoreUnexported(proto.Test{})); diff != "" {
-				t.Errorf("payload mismatch (-got +want):\n%s", diff)
+			want := tc.data.(*proto.Test)
+			if got, want := got.Name, want.Name; got != want {
+				t.Errorf("unexpected name; got %v, want %v", got, want)
+			}
+			if got, want := got.Number, want.Number; got != want {
+				t.Errorf("unexpected number; got %v, want %v", got, want)
 			}
 		})
 	}
@@ -205,8 +208,31 @@ func TestProtoTextMarshaller_Unmarshal(t *testing.T) {
 			if !errors.Is(gotError, tc.wantErr) {
 				t.Fatalf("unpexected error; got %v, want %v", gotError, tc.wantErr)
 			}
-			if diff := cmp.Diff(gotMessage, tc.wantMessage, cmpopts.IgnoreUnexported(proto.Test{})); diff != "" {
-				t.Errorf("message mismatch (-got +want):\n%s", diff)
+			if gotError != nil {
+				return
+			}
+			if got, want := gotMessage.ID, tc.wantMessage.ID; got != want {
+				t.Errorf("unexpected ID; got %v, want %v", got, want)
+			}
+			if got, want := gotMessage.Name, tc.wantMessage.Name; got != want {
+				t.Errorf("unexpected name; got %v, want %v", got, want)
+			}
+			if got, want := gotMessage.Key, tc.wantMessage.Key; got != want {
+				t.Errorf("unexpected key; got %v, want %v", got, want)
+			}
+			if got, want := gotMessage.Attributes, tc.wantMessage.Attributes; !reflect.DeepEqual(got, want) {
+				t.Errorf("unexpected data; got %v, want %v", got, want)
+			}
+
+			var (
+				got  = gotMessage.Data.(*proto.Test)
+				want = tc.wantMessage.Data.(*proto.Test)
+			)
+			if got, want := got.Name, want.Name; got != want {
+				t.Errorf("unexpected data name; got %v, want %v", got, want)
+			}
+			if got, want := got.Number, want.Number; got != want {
+				t.Errorf("unexpected data number; got %v, want %v", got, want)
 			}
 		})
 	}
