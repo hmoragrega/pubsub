@@ -58,7 +58,7 @@ you've chosen supports serializing it to a `[]byte`.
 discriminator while sharing the same topic.     
 * **Key:** (optional) certain pub/sub system can leverage the key to provide FIFO semantics to
 messages with the same key within a single topic.      
-* **Attributes:** (optional) a `map[string]string` with even custom metadata.
+* **Attributes:** (optional) a `map[string]string` with custom message metadata.
 
 ### Publisher
 The publisher sends the message to a given topic using the underlying pub/sub system implementation.    
@@ -70,7 +70,7 @@ type Publisher interface {
 ``` 
 
 Steps:
-* Serializes the message data into using the marshaller
+* Serializes the message data using the marshaller
 * Sends the data, and the rest of the message fields
 as an `EnvelopeMessage` to the pub/sub system.     
 
@@ -96,7 +96,7 @@ type Subscriber interface {
 }
 ```
 
-When the subscription succeeds it returns a channel that is feed with each new consuming operation
+When the subscription succeeds it returns a channel that is fed with each new consuming operation
 , which contains either a new received message or, an error.     
 
 ```go
@@ -121,6 +121,9 @@ at the same time.
 
 To initialize the router pass the unmarshaller and register all the subscribers along with the
  message handler associated to them.     
+ 
+**NOTE:** If you are using an enveloper publsiher and/or marshalling in your own terms, the router
+will use the `NoOpUnmarshaller` function wich will use the raw data `[]byte` slice for the message.
 
 Call `Run` on the router; it starts all the subscribers, and if all succeed, it will consume the
 messages in an endless loop, feeding them to the handlers after unmarshalling the message body.     
