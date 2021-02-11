@@ -5,26 +5,30 @@ package aws
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
+	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/sns"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/sns"
 )
 
-func badSNS() *sns.SNS {
+func badSNS() *sns.Client {
 	cfg := aws.Config{
-		Credentials: credentials.NewStaticCredentials("id", "secret", "token"),
-		Endpoint:    aws.String("bad-host"),
-		Region:      aws.String("eu-west-3"),
-		Logger:      nil,
+		Credentials: credentials.NewStaticCredentialsProvider("id", "secret", "token"),
+		EndpointResolver: aws.EndpointResolverFunc(func(_, _ string) (aws.Endpoint, error) {
+			return aws.Endpoint{
+				URL: "http://bad-host",
+			}, nil
+		}),
+		Retryer: func() aws.Retryer {
+			return aws.NopRetryer{}
+		},
+		HTTPClient: &http.Client{Timeout: 25 * time.Millisecond},
+		Region:     "eu-west-3",
 	}
-	sess, err := session.NewSessionWithOptions(session.Options{Config: cfg})
-	if err != nil {
-		panic(err)
-	}
-	return sns.New(sess)
+	return sns.NewFromConfig(cfg)
 }
 
 func TestCreateTopicFailure(t *testing.T) {

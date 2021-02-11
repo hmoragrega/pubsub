@@ -10,7 +10,7 @@ publisher needs to translate the general topic name to its ARN.
 
 ```go
 sqsPublisher := aws.NewSNSPublisher(
-    snsService,
+    snsClient,
     map[string]string{
         "topic-one": "arn:aws:sns:us-east-2:444455556666:topic-one"
         "topic-two": "arn:aws:sns:us-east-2:444455556666:topic-two"
@@ -24,7 +24,7 @@ Note: it can publish directly to topics starting with `arn:aws:sns`
 We use SQS to consume messages from a queue, using its queue URL:
 ```go
 snsSubscriber := aws.NewSQSSubscriber(
-    sqsService,
+    sqsClient,
     "https://sqs.us-east-2.amazonaws.com/123456789012/MyQueue"
 )
 ```
@@ -69,8 +69,8 @@ the topic to send messages to the queue
 
 This package provides a helper that will a single topic to publish to a single queue
 ```go
-subscriptionARN, err := aws.Subscribe(ctx, snsService, topicARN, queueARN)
-err := aws.AttachQueueForwardingPolicy(ctx, sqsService, queueURL, queueARN, topicARN)
+subscriptionARN, err := aws.Subscribe(ctx, snsClient, topicARN, queueARN)
+err := aws.AttachQueueForwardingPolicy(ctx, sqsClient, queueURL, queueARN, topicARN)
 ```
 
 ### Raw Delivery

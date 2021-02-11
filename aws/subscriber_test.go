@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"math/rand"
 	"os"
 	"reflect"
@@ -13,63 +14,53 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/request"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/sns"
-	"github.com/aws/aws-sdk-go/service/sqs"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/sns"
+	"github.com/aws/aws-sdk-go-v2/service/sqs"
+	"github.com/aws/aws-sdk-go-v2/service/sqs/types"
+	"github.com/aws/smithy-go/logging"
 	"github.com/hmoragrega/pubsub"
 	"github.com/hmoragrega/pubsub/marshaller"
 )
 
 var (
-	sqsTest *sqs.SQS
-	snsTest *sns.SNS
+	sqsTest *sqs.Client
+	snsTest *sns.Client
 )
 
 func TestMain(m *testing.M) {
 	rand.Seed(time.Now().UnixNano())
 
-	cfg := aws.Config{
-		Credentials: credentials.NewEnvCredentials(),
-		Region:      aws.String(getEnvOrDefault("AWS_REGION", "eu-west-3")),
+	opts := []func(*config.LoadOptions) error{
+		config.WithRegion("eu-west-3"),
 	}
 	if os.Getenv("AWS") != "true" {
-		cfg.Credentials = credentials.NewStaticCredentials("id", "secret", "token")
-		cfg.Endpoint = aws.String(getEnvOrDefault("AWS_ENDPOINT", "localhost:4100"))
-		cfg.DisableSSL = aws.Bool(true)
+		opts = append(opts,
+			config.WithCredentialsProvider(
+				credentials.NewStaticCredentialsProvider("id", "secret", "token"),
+			),
+			config.WithEndpointResolver(aws.EndpointResolverFunc(func(service, region string) (aws.Endpoint, error) {
+				return aws.Endpoint{
+					URL:               "http://" + getEnvOrDefault("AWS_ENDPOINT", "localhost:4100"),
+					PartitionID:       "aws",
+					HostnameImmutable: true,
+				}, nil
+			}),
+			))
 	}
-	if os.Getenv("LOGGING") == "true" {
-		cfg.Logger = aws.NewDefaultLogger()
-		cfg.LogLevel = aws.LogLevel(aws.LogDebug | aws.LogDebugWithHTTPBody)
+	if os.Getenv("DEBUG") == "true" {
+		opts = append(opts, config.WithLogger(logging.NewStandardLogger(os.Stderr)))
+	}
+	cfg, err := config.LoadDefaultConfig(context.Background(), opts...)
+	if err != nil {
+		log.Fatalf("unable to load SDK config, %v", err)
 	}
 
-	sess, err := session.NewSessionWithOptions(session.Options{Config: cfg})
-	if err != nil {
-		panic(err)
-	}
-	sqsTest = sqs.New(sess)
-	snsTest = sns.New(sess)
+	sqsTest = sqs.NewFromConfig(cfg)
+	snsTest = sns.NewFromConfig(cfg)
 	m.Run()
-}
-
-func TestSubscribe_NextError(t *testing.T) {
-	c := &Subscriber{sqs: sqsTest, queueURL: "bad queue"}
-	next, err := c.Subscribe()
-	if err != nil {
-		t.Fatal("failed to start consumer", err)
-	}
-	t.Cleanup(func() {
-		if err := c.Stop(context.Background()); err != nil {
-			t.Fatal("failed to stop consumer", err)
-		}
-	})
-
-	n := <-next
-	if n.Err == nil {
-		t.Fatal("expected error but got nil")
-	}
 }
 
 func TestSubscribe_SubscribeErrors(t *testing.T) {
@@ -130,7 +121,7 @@ func TestSubscribe_StopErrors(t *testing.T) {
 		s := Subscriber{sqs: &svc, queueURL: "foo"}
 
 		var block chan struct{}
-		svc.ReceiveMessageWithContextFunc = func(_ aws.Context, _ *sqs.ReceiveMessageInput, _ ...request.Option) (*sqs.ReceiveMessageOutput, error) {
+		svc.ReceiveMessageFunc = func(_ context.Context, _ *sqs.ReceiveMessageInput, _ ...func(*sqs.Options)) (*sqs.ReceiveMessageOutput, error) {
 			<-block
 			return nil, nil
 		}
@@ -152,29 +143,47 @@ func TestSubscribe_StopErrors(t *testing.T) {
 
 func TestSubscribe_AckFailsOnStoppedSubscribers(t *testing.T) {
 	var s Subscriber
-	err := s.ack(&message{})
+	err := s.ack(context.Background(), &message{})
 	if !errors.Is(err, ErrSubscriberStopped) {
 		t.Fatalf("expected already stopped error; got %v", err)
 	}
 }
 
 func TestSubscribe_NextErrors(t *testing.T) {
+	t.Run("non existent queue", func(t *testing.T) {
+		c := &Subscriber{sqs: sqsTest, queueURL: "bad queue"}
+		next, err := c.Subscribe()
+		if err != nil {
+			t.Fatal("failed to start consumer", err)
+		}
+		t.Cleanup(func() {
+			if err := c.Stop(context.Background()); err != nil {
+				t.Fatal("failed to stop consumer", err)
+			}
+		})
+
+		n := <-next
+		if n.Err == nil {
+			t.Fatal("expected error but got nil")
+		}
+	})
+
 	t.Run("poisonous messages", func(t *testing.T) {
 		var svc sqsStub
 		s := Subscriber{sqs: &svc, queueURL: "foo"}
 
-		poisonousMessages := []*sqs.Message{
+		poisonousMessages := []types.Message{
 			{}, // missing id
-			{MessageAttributes: map[string]*sqs.MessageAttributeValue{
+			{MessageAttributes: map[string]types.MessageAttributeValue{
 				idAttributeKey: {},
 			}}, // missing version
-			{MessageAttributes: map[string]*sqs.MessageAttributeValue{
+			{MessageAttributes: map[string]types.MessageAttributeValue{
 				idAttributeKey:      {},
 				versionAttributeKey: {},
 			}}, // missing name
 		}
 
-		svc.ReceiveMessageWithContextFunc = func(ctx aws.Context, _ *sqs.ReceiveMessageInput, _ ...request.Option) (*sqs.ReceiveMessageOutput, error) {
+		svc.ReceiveMessageFunc = func(ctx context.Context, _ *sqs.ReceiveMessageInput, _ ...func(*sqs.Options)) (*sqs.ReceiveMessageOutput, error) {
 			if len(poisonousMessages) == 0 {
 				<-ctx.Done()
 				return nil, ctx.Err()
@@ -184,7 +193,7 @@ func TestSubscribe_NextErrors(t *testing.T) {
 			m := poisonousMessages[0]
 			poisonousMessages = poisonousMessages[1:]
 
-			return &sqs.ReceiveMessageOutput{Messages: []*sqs.Message{m}}, nil
+			return &sqs.ReceiveMessageOutput{Messages: []types.Message{m}}, nil
 		}
 
 		next, err := s.Subscribe()
@@ -347,7 +356,7 @@ func TestSubscriberAsyncAck(t *testing.T) {
 		ackOperations      = make(chan struct{}, 2)
 	)
 	sqsSvc := &sqsStub{
-		ReceiveMessageWithContextFunc: func(ctx aws.Context, _ *sqs.ReceiveMessageInput, _ ...request.Option) (*sqs.ReceiveMessageOutput, error) {
+		ReceiveMessageFunc: func(ctx context.Context, _ *sqs.ReceiveMessageInput, _ ...func(*sqs.Options)) (*sqs.ReceiveMessageOutput, error) {
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()
@@ -355,7 +364,7 @@ func TestSubscriberAsyncAck(t *testing.T) {
 				return r.out, r.err
 			}
 		},
-		DeleteMessageBatchFunc: func(input *sqs.DeleteMessageBatchInput) (*sqs.DeleteMessageBatchOutput, error) {
+		DeleteMessageBatchFunc: func(_ context.Context, _ *sqs.DeleteMessageBatchInput, _ ...func(*sqs.Options)) (*sqs.DeleteMessageBatchOutput, error) {
 			r := <-deleteBatchReturns
 			ackOperations <- struct{}{}
 			return r.out, r.err
@@ -370,11 +379,11 @@ func TestSubscriberAsyncAck(t *testing.T) {
 		},
 	}
 
-	input := make([]*sqs.Message, messages)
+	input := make([]types.Message, messages)
 	for i := 0; i < messages; i++ {
-		input[i] = &sqs.Message{
+		input[i] = types.Message{
 			Body: aws.String("body"),
-			MessageAttributes: map[string]*sqs.MessageAttributeValue{
+			MessageAttributes: map[string]types.MessageAttributeValue{
 				idAttributeKey:      {StringValue: aws.String(fmt.Sprintf("id-%d", i))},
 				versionAttributeKey: {StringValue: aws.String(fmt.Sprintf("version"))},
 				nameAttributeKey:    {StringValue: aws.String(fmt.Sprintf("name"))},
@@ -390,7 +399,7 @@ func TestSubscriberAsyncAck(t *testing.T) {
 	// be reported on first ack after the batch flush.
 	deleteBatchReturns <- deleteBatchResult{
 		out: &sqs.DeleteMessageBatchOutput{
-			Failed: []*sqs.BatchResultErrorEntry{{
+			Failed: []types.BatchResultErrorEntry{{
 				Id:      aws.String("id-0"),
 				Code:    aws.String("ERR-0"),
 				Message: aws.String("error zero"),
@@ -448,13 +457,13 @@ func TestSubscriberAsyncAckTicker(t *testing.T) {
 
 	var nextCalls int
 	sqsSvc := &sqsStub{
-		ReceiveMessageWithContextFunc: func(ctx aws.Context, _ *sqs.ReceiveMessageInput, _ ...request.Option) (*sqs.ReceiveMessageOutput, error) {
+		ReceiveMessageFunc: func(ctx context.Context, _ *sqs.ReceiveMessageInput, _ ...func(*sqs.Options)) (*sqs.ReceiveMessageOutput, error) {
 			nextCalls++
 			if nextCalls == 1 {
 				return &sqs.ReceiveMessageOutput{
-					Messages: []*sqs.Message{{
+					Messages: []types.Message{{
 						Body: aws.String("body"),
-						MessageAttributes: map[string]*sqs.MessageAttributeValue{
+						MessageAttributes: map[string]types.MessageAttributeValue{
 							idAttributeKey:      {StringValue: aws.String("id")},
 							versionAttributeKey: {StringValue: aws.String("version")},
 							nameAttributeKey:    {StringValue: aws.String("name")},
@@ -467,7 +476,7 @@ func TestSubscriberAsyncAckTicker(t *testing.T) {
 			<-ctx.Done()
 			return nil, ctx.Err()
 		},
-		DeleteMessageBatchFunc: func(input *sqs.DeleteMessageBatchInput) (*sqs.DeleteMessageBatchOutput, error) {
+		DeleteMessageBatchFunc: func(_ context.Context, _ *sqs.DeleteMessageBatchInput, _ ...func(*sqs.Options)) (*sqs.DeleteMessageBatchOutput, error) {
 			close(waitForFlush)
 			return nil, errors.New("request failed")
 		},
@@ -514,7 +523,7 @@ func createTestQueue(ctx context.Context, t *testing.T, queueName string) string
 			t.Fatal("cannot delete queue", err)
 		}
 	})
-	_, err := sqsTest.PurgeQueueWithContext(ctx, &sqs.PurgeQueueInput{QueueUrl: &queueURL})
+	_, err := sqsTest.PurgeQueue(ctx, &sqs.PurgeQueueInput{QueueUrl: &queueURL})
 	if err != nil {
 		t.Fatal("cannot purge queue", err)
 	}
@@ -542,21 +551,21 @@ func createTestTopic(ctx context.Context, t *testing.T, topicName string) string
 }
 
 type sqsStub struct {
-	ReceiveMessageWithContextFunc func(ctx aws.Context, input *sqs.ReceiveMessageInput, opts ...request.Option) (*sqs.ReceiveMessageOutput, error)
-	DeleteMessageBatchFunc        func(input *sqs.DeleteMessageBatchInput) (*sqs.DeleteMessageBatchOutput, error)
-	DeleteMessageWithContextFunc  func(ctx aws.Context, input *sqs.DeleteMessageInput, opts ...request.Option) (*sqs.DeleteMessageOutput, error)
+	ReceiveMessageFunc     func(ctx context.Context, params *sqs.ReceiveMessageInput, optFns ...func(*sqs.Options)) (*sqs.ReceiveMessageOutput, error)
+	DeleteMessageFunc      func(ctx context.Context, params *sqs.DeleteMessageInput, optFns ...func(*sqs.Options)) (*sqs.DeleteMessageOutput, error)
+	DeleteMessageBatchFunc func(ctx context.Context, params *sqs.DeleteMessageBatchInput, optFns ...func(*sqs.Options)) (*sqs.DeleteMessageBatchOutput, error)
 }
 
-func (s *sqsStub) ReceiveMessageWithContext(ctx aws.Context, input *sqs.ReceiveMessageInput, opts ...request.Option) (*sqs.ReceiveMessageOutput, error) {
-	return s.ReceiveMessageWithContextFunc(ctx, input, opts...)
+func (s *sqsStub) ReceiveMessage(ctx context.Context, params *sqs.ReceiveMessageInput, optFns ...func(*sqs.Options)) (*sqs.ReceiveMessageOutput, error) {
+	return s.ReceiveMessageFunc(ctx, params, optFns...)
 }
 
-func (s *sqsStub) DeleteMessageBatch(input *sqs.DeleteMessageBatchInput) (*sqs.DeleteMessageBatchOutput, error) {
-	return s.DeleteMessageBatchFunc(input)
+func (s *sqsStub) DeleteMessageBatch(ctx context.Context, params *sqs.DeleteMessageBatchInput, optFns ...func(*sqs.Options)) (*sqs.DeleteMessageBatchOutput, error) {
+	return s.DeleteMessageBatchFunc(ctx, params, optFns...)
 }
 
-func (s *sqsStub) DeleteMessageWithContext(ctx aws.Context, input *sqs.DeleteMessageInput, opts ...request.Option) (*sqs.DeleteMessageOutput, error) {
-	return s.DeleteMessageWithContext(ctx, input, opts...)
+func (s *sqsStub) DeleteMessage(ctx context.Context, params *sqs.DeleteMessageInput, optFns ...func(*sqs.Options)) (*sqs.DeleteMessageOutput, error) {
+	return s.DeleteMessageFunc(ctx, params, optFns...)
 }
 
 func getEnvOrDefault(key, defaultValue string) string {

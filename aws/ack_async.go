@@ -6,8 +6,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/sqs"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/sqs"
+	"github.com/aws/aws-sdk-go-v2/service/sqs/types"
 	"github.com/hashicorp/go-multierror"
 )
 
@@ -57,7 +58,6 @@ func (s *asyncAck) run() {
 		size   = s.cfg.BatchSize
 		every  = s.cfg.FlushEvery
 		batch  = make([]*message, 0, size)
-		input  = make([]*sqs.DeleteMessageBatchRequestEntry, 0, size)
 		ticker *time.Ticker
 		tick   <-chan time.Time
 	)
@@ -70,10 +70,6 @@ func (s *asyncAck) run() {
 	// adds a message to the batch.
 	add := func(m *message) {
 		batch = append(batch, m)
-		input = append(input, &sqs.DeleteMessageBatchRequestEntry{
-			Id:            aws.String(m.ID()),
-			ReceiptHandle: m.sqsReceiptHandle,
-		})
 	}
 
 	// flushes the batch.
@@ -82,10 +78,9 @@ func (s *asyncAck) run() {
 		if c < minimum {
 			return
 		}
-		s.batchAck(input, batch)
+		s.batchAck(batch)
 
 		// reset the batch
-		input = input[:0]
 		batch = batch[:0]
 
 		if ticker != nil {
@@ -137,8 +132,15 @@ func (s *asyncAck) Close(ctx context.Context) (err error) {
 	}
 }
 
-func (s *asyncAck) batchAck(input []*sqs.DeleteMessageBatchRequestEntry, batch []*message) {
-	out, err := s.sqs.DeleteMessageBatch(&sqs.DeleteMessageBatchInput{
+func (s *asyncAck) batchAck(batch []*message) {
+	input := make([]types.DeleteMessageBatchRequestEntry, len(batch))
+	for i, m := range batch {
+		input[i] = types.DeleteMessageBatchRequestEntry{
+			Id:            aws.String(m.ID()),
+			ReceiptHandle: m.sqsReceiptHandle,
+		}
+	}
+	out, err := s.sqs.DeleteMessageBatch(context.Background(), &sqs.DeleteMessageBatchInput{
 		Entries:  input,
 		QueueUrl: &s.queueURL,
 	})

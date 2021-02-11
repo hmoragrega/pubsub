@@ -4,13 +4,13 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/sns"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/sns"
 )
 
 // CreateTopic creates a SNS topic.
-func CreateTopic(ctx context.Context, svc *sns.SNS, topicName string) (string, error) {
-	out, err := svc.CreateTopicWithContext(ctx, &sns.CreateTopicInput{
+func CreateTopic(ctx context.Context, svc *sns.Client, topicName string) (string, error) {
+	out, err := svc.CreateTopic(ctx, &sns.CreateTopicInput{
 		Name: &topicName,
 	})
 	if err != nil {
@@ -21,8 +21,8 @@ func CreateTopic(ctx context.Context, svc *sns.SNS, topicName string) (string, e
 }
 
 // DeleteTopic deletes a topic.
-func DeleteTopic(ctx context.Context, svc *sns.SNS, topicARN string) error {
-	_, err := svc.DeleteTopicWithContext(ctx, &sns.DeleteTopicInput{
+func DeleteTopic(ctx context.Context, svc *sns.Client, topicARN string) error {
+	_, err := svc.DeleteTopic(ctx, &sns.DeleteTopicInput{
 		TopicArn: &topicARN,
 	})
 	if err != nil {
@@ -32,12 +32,12 @@ func DeleteTopic(ctx context.Context, svc *sns.SNS, topicARN string) error {
 }
 
 // Subscribe a queue to a topic with raw delivery enabled
-func Subscribe(ctx context.Context, svc *sns.SNS, topicARN, queueARN string) (string, error) {
-	out, err := svc.SubscribeWithContext(ctx, &sns.SubscribeInput{
+func Subscribe(ctx context.Context, svc *sns.Client, topicARN, queueARN string) (string, error) {
+	out, err := svc.Subscribe(ctx, &sns.SubscribeInput{
 		Endpoint: &queueARN,
 		TopicArn: &topicARN,
-		Attributes: map[string]*string{
-			"RawMessageDelivery": aws.String("true"), // pass the raw message to SQS
+		Attributes: map[string]string{
+			"RawMessageDelivery": "true", // pass the raw message to SQS
 		},
 		Protocol: aws.String("sqs"),
 	})
@@ -48,8 +48,8 @@ func Subscribe(ctx context.Context, svc *sns.SNS, topicARN, queueARN string) (st
 }
 
 // Unsubscribe removes the subscription of the topic.
-func Unsubscribe(ctx context.Context, svc *sns.SNS, subscriptionARN string) error {
-	_, err := svc.UnsubscribeWithContext(ctx, &sns.UnsubscribeInput{
+func Unsubscribe(ctx context.Context, svc *sns.Client, subscriptionARN string) error {
+	_, err := svc.Unsubscribe(ctx, &sns.UnsubscribeInput{
 		SubscriptionArn: &subscriptionARN,
 	})
 	if err != nil {

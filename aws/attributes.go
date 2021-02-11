@@ -3,8 +3,8 @@ package aws
 import (
 	"strings"
 
-	"github.com/aws/aws-sdk-go/service/sns"
-	"github.com/aws/aws-sdk-go/service/sqs"
+	snstypes "github.com/aws/aws-sdk-go-v2/service/sns/types"
+	sqstypes "github.com/aws/aws-sdk-go-v2/service/sqs/types"
 	"github.com/hmoragrega/pubsub"
 )
 
@@ -16,8 +16,8 @@ const (
 	customAttributePrefix = "x-"
 )
 
-func encodeAttributes(env *pubsub.Envelope) map[string]*sns.MessageAttributeValue {
-	attributes := map[string]*sns.MessageAttributeValue{
+func encodeAttributes(env *pubsub.Envelope) map[string]snstypes.MessageAttributeValue {
+	attributes := map[string]snstypes.MessageAttributeValue{
 		idAttributeKey: {
 			DataType:    stringDataType,
 			StringValue: &env.ID,
@@ -32,7 +32,7 @@ func encodeAttributes(env *pubsub.Envelope) map[string]*sns.MessageAttributeValu
 		},
 	}
 	if env.Key != "" {
-		attributes[keyAttributeKey] = &sns.MessageAttributeValue{
+		attributes[keyAttributeKey] = snstypes.MessageAttributeValue{
 			DataType:    stringDataType,
 			StringValue: &env.Key,
 		}
@@ -40,7 +40,7 @@ func encodeAttributes(env *pubsub.Envelope) map[string]*sns.MessageAttributeValu
 	for k, v := range env.Attributes {
 		v := v
 		k := customAttributePrefix + k
-		attributes[k] = &sns.MessageAttributeValue{
+		attributes[k] = snstypes.MessageAttributeValue{
 			DataType:    stringDataType,
 			StringValue: &v,
 		}
@@ -48,7 +48,7 @@ func encodeAttributes(env *pubsub.Envelope) map[string]*sns.MessageAttributeValu
 	return attributes
 }
 
-func decodeAttributes(attributes map[string]*sqs.MessageAttributeValue) map[string]string {
+func decodeAttributes(attributes map[string]sqstypes.MessageAttributeValue) map[string]string {
 	custom := make(map[string]string)
 	for k, v := range attributes {
 		if strings.Index(k, customAttributePrefix) != 0 {

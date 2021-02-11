@@ -8,7 +8,7 @@ import (
 	"strings"
 	"unsafe"
 
-	"github.com/aws/aws-sdk-go/service/sns"
+	"github.com/aws/aws-sdk-go-v2/service/sns"
 	"github.com/hmoragrega/pubsub"
 )
 
@@ -16,12 +16,12 @@ var ErrTopicNotFound = errors.New("could not find topic ARN")
 
 // Publisher SNS publisher.
 type Publisher struct {
-	sns       *sns.SNS
+	sns       *sns.Client
 	topicARNs map[string]string
 }
 
 // NewSNSPublisher creates a new SNS publisher.
-func NewSNSPublisher(sns *sns.SNS, topicARNs map[string]string) *Publisher {
+func NewSNSPublisher(sns *sns.Client, topicARNs map[string]string) *Publisher {
 	return &Publisher{
 		sns:       sns,
 		topicARNs: topicARNs,
@@ -51,7 +51,7 @@ func (p *Publisher) Publish(ctx context.Context, topic string, envelopes ...*pub
 	//	}
 
 	for _, env := range envelopes {
-		_, err := p.sns.PublishWithContext(ctx, &sns.PublishInput{
+		_, err := p.sns.Publish(ctx, &sns.PublishInput{
 			TopicArn:          &topicARN,
 			Message:           stringPtr(env.Body),
 			MessageAttributes: encodeAttributes(env),
