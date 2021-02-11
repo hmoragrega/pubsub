@@ -4,26 +4,30 @@ package aws
 
 import (
 	"context"
+	"net/http"
 	"testing"
+	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/sqs"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/sqs"
 )
 
-func badSQS() *sqs.SQS {
+func badSQS() *sqs.Client {
 	cfg := aws.Config{
-		Credentials: credentials.NewStaticCredentials("id", "secret", "token"),
-		Endpoint:    aws.String("bad-host"),
-		Region:      aws.String("eu-west-3"),
-		Logger:      nil,
+		Credentials: credentials.NewStaticCredentialsProvider("id", "secret", "token"),
+		EndpointResolver: aws.EndpointResolverFunc(func(_, _ string) (aws.Endpoint, error) {
+			return aws.Endpoint{
+				URL: "http://bad-host",
+			}, nil
+		}),
+		Retryer: func() aws.Retryer {
+			return aws.NopRetryer{}
+		},
+		HTTPClient: &http.Client{Timeout: 25 * time.Millisecond},
+		Region:     "eu-west-3",
 	}
-	sess, err := session.NewSessionWithOptions(session.Options{Config: cfg})
-	if err != nil {
-		panic(err)
-	}
-	return sqs.New(sess)
+	return sqs.NewFromConfig(cfg)
 }
 
 func TestCreateQueueFailure(t *testing.T) {

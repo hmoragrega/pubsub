@@ -3,7 +3,7 @@ package aws
 import (
 	"context"
 
-	"github.com/aws/aws-sdk-go/service/sqs"
+	"github.com/aws/aws-sdk-go-v2/service/sqs"
 )
 
 type syncAck struct {
@@ -19,7 +19,7 @@ func newSyncAck(svc sqsSvc, queueURL string) *syncAck {
 }
 
 func (s *syncAck) Ack(ctx context.Context, msg *message) error {
-	_, err := s.sqs.DeleteMessageWithContext(ctx, &sqs.DeleteMessageInput{
+	_, err := s.sqs.DeleteMessage(ctx, &sqs.DeleteMessageInput{
 		ReceiptHandle: msg.sqsReceiptHandle,
 		QueueUrl:      &s.queueURL,
 	})

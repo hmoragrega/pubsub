@@ -7,9 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/request"
-	"github.com/aws/aws-sdk-go/service/sqs"
+	"github.com/aws/aws-sdk-go-v2/service/sqs"
+	"github.com/aws/aws-sdk-go-v2/service/sqs/types"
 	"github.com/hmoragrega/pubsub"
 )
 
@@ -27,9 +26,9 @@ var (
 	ErrAlreadyStopped    = errors.New("already stopped")
 	ErrMissingConfig     = errors.New("missing configuration")
 
-	maxNumberOfMessages int64 = 10
-	waitTimeSeconds     int64 = 20
-	allAttributes             = []*string{aws.String("All")}
+	maxNumberOfMessages int32 = 10
+	waitTimeSeconds     int32 = 20
+	allAttributes             = []string{"All"}
 )
 
 var _ pubsub.Subscriber = (*Subscriber)(nil)
@@ -96,7 +95,7 @@ func WithAck(cfg AckConfig) func(s *Subscriber) {
 }
 
 // NewSQSSubscriber creates a new SQS subscriber.
-func NewSQSSubscriber(sqs *sqs.SQS, queueURL string, opts ...func(s *Subscriber)) *Subscriber {
+func NewSQSSubscriber(sqs sqsSvc, queueURL string, opts ...func(s *Subscriber)) *Subscriber {
 	s := &Subscriber{
 		sqs:      sqs,
 		queueURL: queueURL,
@@ -167,11 +166,11 @@ func (s *Subscriber) consume(ctx context.Context) {
 	defer close(s.stopped)
 
 	for {
-		out, err := s.sqs.ReceiveMessageWithContext(ctx, &sqs.ReceiveMessageInput{
+		out, err := s.sqs.ReceiveMessage(ctx, &sqs.ReceiveMessageInput{
 			QueueUrl:              &s.queueURL,
-			MaxNumberOfMessages:   &maxNumberOfMessages,
-			WaitTimeSeconds:       &waitTimeSeconds,
-			AttributeNames:        allAttributes,
+			MaxNumberOfMessages:   maxNumberOfMessages,
+			WaitTimeSeconds:       waitTimeSeconds,
+			AttributeNames:        []types.QueueAttributeName{"All"},
 			MessageAttributeNames: allAttributes,
 		})
 		if err != nil {
@@ -181,18 +180,22 @@ func (s *Subscriber) consume(ctx context.Context) {
 				return
 			}
 			s.next <- pubsub.Next{Err: err}
+			continue
 		}
+
 		messages, err := s.wrapMessages(out.Messages)
 		if err != nil {
 			s.next <- pubsub.Next{Err: err}
+			continue
 		}
+
 		for _, message := range messages {
 			s.next <- pubsub.Next{Message: message}
 		}
 	}
 }
 
-func (s *Subscriber) wrapMessages(in []*sqs.Message) (out []pubsub.ReceivedMessage, err error) {
+func (s *Subscriber) wrapMessages(in []types.Message) (out []pubsub.ReceivedMessage, err error) {
 	out = make([]pubsub.ReceivedMessage, len(in))
 	for i, m := range in {
 		var awsMsgID string
@@ -230,7 +233,7 @@ func (s *Subscriber) wrapMessages(in []*sqs.Message) (out []pubsub.ReceivedMessa
 	return out, nil
 }
 
-func (s *Subscriber) ack(msg *message) error {
+func (s *Subscriber) ack(_ context.Context, msg *message) error {
 	if !s.isRunning() {
 		return fmt.Errorf("%w", ErrSubscriberStopped)
 	}
@@ -251,7 +254,7 @@ func (s *Subscriber) isRunning() bool {
 }
 
 type sqsSvc interface {
-	ReceiveMessageWithContext(ctx aws.Context, input *sqs.ReceiveMessageInput, opts ...request.Option) (*sqs.ReceiveMessageOutput, error)
-	DeleteMessageBatch(input *sqs.DeleteMessageBatchInput) (*sqs.DeleteMessageBatchOutput, error)
-	DeleteMessageWithContext(ctx aws.Context, input *sqs.DeleteMessageInput, opts ...request.Option) (*sqs.DeleteMessageOutput, error)
+	ReceiveMessage(ctx context.Context, params *sqs.ReceiveMessageInput, optFns ...func(*sqs.Options)) (*sqs.ReceiveMessageOutput, error)
+	DeleteMessage(ctx context.Context, params *sqs.DeleteMessageInput, optFns ...func(*sqs.Options)) (*sqs.DeleteMessageOutput, error)
+	DeleteMessageBatch(ctx context.Context, params *sqs.DeleteMessageBatchInput, optFns ...func(*sqs.Options)) (*sqs.DeleteMessageBatchOutput, error)
 }

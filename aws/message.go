@@ -3,7 +3,7 @@ package aws
 import (
 	"context"
 
-	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go-v2/aws"
 )
 
 var (
@@ -48,6 +48,6 @@ func (m *message) Attributes() map[string]string {
 	return m.attributes
 }
 
-func (m *message) Ack(_ context.Context) error {
-	return m.subscriber.ack(m)
+func (m *message) Ack(ctx context.Context) error {
+	return m.subscriber.ack(ctx, m)
 }
