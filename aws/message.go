@@ -6,10 +6,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 )
 
-var (
-	stringDataType = aws.String("String")
-	binaryDataType = aws.String("Binary")
-)
+var stringDataType = aws.String("String")
 
 type message struct {
 	id         *string

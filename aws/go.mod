@@ -1,4 +1,4 @@
-module github.com/hmoragrega/pubsub/awsv2
+module github.com/hmoragrega/pubsub/aws
 
 go 1.15
 
