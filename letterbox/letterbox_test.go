@@ -2,6 +2,7 @@ package letterbox
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -142,6 +143,166 @@ func TestLetterbox(t *testing.T) {
 	}
 }
 
-func TestLetterbox_Failures(t *testing.T) {
+func TestLetterbox_RequestFailures(t *testing.T) {
+	var ctx = context.Background()
+	var letterbox Letterbox
 
+	t.Run("nil request", func(t *testing.T) {
+		if _, err := letterbox.Request(ctx, "foo", nil); err == nil {
+			t.Fatal("expected error, got", err)
+		}
+	})
+	t.Run("duplicated request ID", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+
+		letterbox.Publisher = pubsub.PublisherFunc(func(_ context.Context, _ string, _ ...*pubsub.Message) error {
+			return nil
+		})
+		msg := &pubsub.Message{
+			ID: "123",
+		}
+		errs := make(chan error, 2)
+		go func() {
+			_, err := letterbox.Request(ctx, "foo", msg)
+			errs <- err
+		}()
+		go func() {
+			_, err := letterbox.Request(ctx, "foo", msg)
+			errs <- err
+		}()
+
+		err := <- errs
+		if !errors.Is(err, ErrRequestAlreadySent) {
+			t.Fatal("expected error, got", err)
+		}
+
+		if _, ok := letterbox.pop("123"); !ok {
+			t.Fatal("the first message should be there")
+		}
+		cancel()
+	})
+	t.Run("timeout ", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		letterbox.Publisher = pubsub.PublisherFunc(func(_ context.Context, _ string, _ ...*pubsub.Message) error {
+			cancel()
+			return nil
+		})
+
+		_, err := letterbox.Request(ctx, "foo", &pubsub.Message{
+				ID: "123",
+		})
+		if !errors.Is(err, context.Canceled) {
+			t.Fatal("expected timeout, got", err)
+		}
+	})
+	t.Run("publisher error", func(t *testing.T) {
+		var dummyErr = errors.New("some error")
+		letterbox.Publisher = pubsub.PublisherFunc(func(_ context.Context, _ string, _ ...*pubsub.Message) error {
+			return dummyErr
+		})
+		if _, err := letterbox.Request(ctx, "foo", &pubsub.Message{}); !errors.Is(err, dummyErr) {
+			t.Fatalf("expected error %v, got %v", dummyErr, err)
+		}
+	})
+}
+
+func TestLetterbox_ResponseFailures(t *testing.T) {
+	var ctx = context.Background()
+	var letterbox Letterbox
+
+	t.Run("nil request", func(t *testing.T) {
+		if err := letterbox.Response(ctx, nil, nil); err == nil {
+			t.Fatal("expected error, got", err)
+		}
+	})
+	t.Run("nil response", func(t *testing.T) {
+		if err := letterbox.Response(ctx, &pubsub.Message{}, nil); err == nil {
+			t.Fatal("expected error, got", err)
+		}
+	})
+	t.Run("missing response topic", func(t *testing.T) {
+		if err := letterbox.Response(ctx, &pubsub.Message{}, &pubsub.Message{}); err == nil {
+			t.Fatal("expected error, got", err)
+		}
+	})
+	t.Run("missing request ID", func(t *testing.T) {
+		if err := letterbox.Response(ctx, &pubsub.Message{
+			Attributes: map[string]string{
+				responseTopicAttribute: "foo-topic",
+			},
+		}, &pubsub.Message{}); err == nil {
+			t.Fatal("expected error, got", err)
+		}
+	})
+	t.Run("missing requested at", func(t *testing.T) {
+		if err := letterbox.Response(ctx, &pubsub.Message{
+			Attributes: map[string]string{
+				responseTopicAttribute: "foo-topic",
+				requestIDAttribute:     "123",
+			},
+		}, &pubsub.Message{}); err == nil {
+			t.Fatal("expected error, got", err)
+		}
+	})
+	t.Run("publisher error", func(t *testing.T) {
+		var dummyErr = errors.New("some error")
+		letterbox.Publisher = pubsub.PublisherFunc(func(ctx context.Context, topic string, envelopes ...*pubsub.Message) error {
+			return dummyErr
+		})
+		err := letterbox.Response(ctx, &pubsub.Message{
+			Attributes: map[string]string{
+				responseTopicAttribute: "foo-topic",
+				requestIDAttribute:     "123",
+				requestedAtAttribute:   time.Now().Format(time.RFC3339Nano),
+			},
+		}, &pubsub.Message{})
+		if !errors.Is(err, dummyErr) {
+			t.Fatal("unexpected error, got", err)
+		}
+	})
+}
+
+func TestLetterbox_HandleMessageFailures(t *testing.T) {
+	var ctx = context.Background()
+	var letterbox Letterbox
+
+	t.Run("nil response", func(t *testing.T) {
+		if err := letterbox.HandleMessage(ctx, nil); err == nil {
+			t.Fatal("expected error, got", err)
+		}
+	})
+	t.Run("missing request ID", func(t *testing.T) {
+		if err := letterbox.HandleMessage(ctx, &pubsub.Message{}); err == nil {
+			t.Fatal("expected error, got", err)
+		}
+	})
+	t.Run("missing requested at", func(t *testing.T) {
+		if err := letterbox.HandleMessage(ctx, &pubsub.Message{
+			Attributes: map[string]string{
+				requestIDAttribute: "123",
+			},
+		}); err == nil {
+			t.Fatal("expected error, got", err)
+		}
+	})
+	t.Run("invalid requested at", func(t *testing.T) {
+		if err := letterbox.HandleMessage(ctx, &pubsub.Message{
+			Attributes: map[string]string{
+				requestIDAttribute:   "123",
+				requestedAtAttribute: "bad",
+			},
+		}); err == nil {
+			t.Fatal("expected error, got", err)
+		}
+	})
+	t.Run("miss request does not return errors", func(t *testing.T) {
+		if err := letterbox.HandleMessage(ctx, &pubsub.Message{
+			Attributes: map[string]string{
+				requestIDAttribute:   "123",
+				requestedAtAttribute: time.Now().Format(time.RFC3339Nano),
+			},
+		}); err != nil {
+			t.Fatal("unexpected err, got", err)
+		}
+	})
 }

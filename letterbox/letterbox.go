@@ -16,10 +16,7 @@ const (
 	requestedAtAttribute   = "letterbox-requested-at"
 )
 
-var (
-	ErrRequestAlreadySent = errors.New("request already sent")
-	ErrSendingRequest     = errors.New("cannot send request")
-)
+var ErrRequestAlreadySent = errors.New("request already sent")
 
 type Response struct {
 	RequestID   string
@@ -52,6 +49,10 @@ type Letterbox struct {
 // - the response is available.
 // - the given context is done.
 func (x *Letterbox) Request(ctx context.Context, topic string, request *pubsub.Message) (*pubsub.Message, error) {
+	if request == nil {
+		return nil, fmt.Errorf("nil request")
+	}
+
 	requestID := request.ID
 	if len(requestID) == 0 {
 		requestID = pubsub.NewID()
@@ -72,7 +73,7 @@ func (x *Letterbox) Request(ctx context.Context, topic string, request *pubsub.M
 	defer x.delete(requestID)
 
 	if err := x.Publisher.Publish(ctx, topic, request); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrSendingRequest, err)
+		return nil, err
 	}
 
 	select {
@@ -96,6 +97,12 @@ func (x *Letterbox) Handler(handler func(context.Context, *pubsub.Message) (*pub
 
 // Response sends a response to a request.
 func (x *Letterbox) Response(ctx context.Context, request, response *pubsub.Message) error {
+	if request == nil {
+		return fmt.Errorf("nil request")
+	}
+	if response == nil {
+		return fmt.Errorf("nil response")
+	}
 	topic, ok := request.Attributes[responseTopicAttribute]
 	if !ok {
 		return fmt.Errorf("missing response topic in request")
@@ -112,14 +119,14 @@ func (x *Letterbox) Response(ctx context.Context, request, response *pubsub.Mess
 	response.SetAttribute(requestIDAttribute, requestID)
 	response.SetAttribute(requestedAtAttribute, requestedAt)
 
-	if err := x.Publisher.Publish(ctx, topic, response); err != nil {
-		return fmt.Errorf("cannot send response: %v", err)
-	}
-	return nil
+	return x.Publisher.Publish(ctx, topic, response)
 }
 
 // HandleMessage is the message handler for the responses
 func (x *Letterbox) HandleMessage(_ context.Context, response *pubsub.Message) error {
+	if response == nil {
+		return fmt.Errorf("nil response")
+	}
 	requestID, ok := response.Attributes[requestIDAttribute]
 	if !ok {
 		return fmt.Errorf("missing request ID")
@@ -127,7 +134,7 @@ func (x *Letterbox) HandleMessage(_ context.Context, response *pubsub.Message) e
 
 	t := response.Attributes[requestedAtAttribute]
 	if !ok {
-		return fmt.Errorf("missing request ID")
+		return fmt.Errorf("missing requested at")
 	}
 
 	requestedAt, err := time.Parse(time.RFC3339Nano, t)

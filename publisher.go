@@ -10,6 +10,14 @@ type Publisher interface {
 	Publish(ctx context.Context, topic string, messages ...*Message) error
 }
 
+// PublisherFunc is a function that can publish messages.
+type PublisherFunc func(ctx context.Context, topic string, envelopes ...*Message) error
+
+// Publish publishes messages invoking the function.
+func (f PublisherFunc) Publish(ctx context.Context, topic string, envelopes ...*Message) error {
+	return f(ctx, topic, envelopes...)
+}
+
 // EnvelopePublisher publish envelopes where the data has already been
 // marshalled.
 //
@@ -18,6 +26,14 @@ type Publisher interface {
 // router.
 type EnvelopePublisher interface {
 	Publish(ctx context.Context, topic string, envelopes ...*Envelope) error
+}
+
+// EnvelopePublisherFunc is a function that can publish envelopes.
+type EnvelopePublisherFunc func(ctx context.Context, topic string, envelopes ...*Envelope) error
+
+// Publish publishes envelopes invoking the function.
+func (f EnvelopePublisherFunc) Publish(ctx context.Context, topic string, envelopes ...*Envelope) error {
+	return f(ctx, topic, envelopes...)
 }
 
 // Envelope holds the data that need to be transmitted.
@@ -91,11 +107,7 @@ func (p *MarshallerPublisher) Handler(topic string, handler PublisherHandler) Ha
 		if err != nil {
 			return err
 		}
-		for _, m := range messages {
-			if err := p.Publish(ctx, topic, m); err != nil {
-				return err
-			}
-		}
-		return nil
+
+		return p.Publish(ctx, topic, messages...)
 	})
 }

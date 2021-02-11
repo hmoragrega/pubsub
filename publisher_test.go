@@ -3,10 +3,12 @@ package pubsub_test
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 
 	"github.com/hmoragrega/pubsub"
 	"github.com/hmoragrega/pubsub/internal/stubs"
+	"github.com/hmoragrega/pubsub/marshaller"
 )
 
 func TestPublisher_PublishMarshallFailure(t *testing.T) {
@@ -25,5 +27,55 @@ func TestPublisher_PublishMarshallFailure(t *testing.T) {
 	err := p.Publish(context.Background(), "foo", &pubsub.Message{Data: "data"})
 	if !errors.Is(err, fakeErr) {
 		t.Fatalf("unexpected error result; got %v", err)
+	}
+}
+
+func TestPublisher_PublishHandlerSendMessages(t *testing.T) {
+	var (
+		publishedMessages []*pubsub.Envelope
+		publishedTopic    string
+		dummyErr          = errors.New("some error")
+	)
+	p := pubsub.NewPublisher(pubsub.EnvelopePublisherFunc(func(ctx context.Context, topic string, envelopes ...*pubsub.Envelope) error {
+		publishedTopic = topic
+		publishedMessages = envelopes
+		return dummyErr
+	}), &marshaller.ByteMarshaller{})
+
+	topicToSend := "foo"
+	messagesToSend := []*pubsub.Message{
+		{Data: "foo"},
+		{Data: "bar"},
+	}
+
+	err := p.Handler(topicToSend, pubsub.PublisherHandlerFunc(func(ctx context.Context, message *pubsub.Message) ([]*pubsub.Message, error) {
+		return messagesToSend, nil
+	})).HandleMessage(context.Background(), &pubsub.Message{})
+
+	if !errors.Is(err, dummyErr) {
+		t.Fatalf("expected error; got %v, want %v", err, dummyErr)
+	}
+	if publishedTopic != topicToSend {
+		t.Fatalf("unpected pubslihing topic; got %v, want %v", publishedTopic, topicToSend)
+	}
+	if reflect.DeepEqual(messagesToSend, publishedMessages) {
+		t.Fatalf("expected error; got %v, want %v", err, dummyErr)
+	}
+}
+
+func TestPublisher_PublishHandlerDoNotSend(t *testing.T) {
+	p := pubsub.NewPublisher(pubsub.EnvelopePublisherFunc(func(ctx context.Context, topic string, envelopes ...*pubsub.Envelope) error {
+		t.Error("publisher call was not expected")
+		return nil
+	}), &marshaller.ByteMarshaller{})
+
+	dummyErr := errors.New("some error")
+
+	err := p.Handler("foo", pubsub.PublisherHandlerFunc(func(ctx context.Context, message *pubsub.Message) ([]*pubsub.Message, error) {
+		return nil, dummyErr
+	})).HandleMessage(context.Background(), &pubsub.Message{})
+
+	if !errors.Is(err, dummyErr) {
+		t.Fatalf("expected error; got %v, want %v", err, dummyErr)
 	}
 }
