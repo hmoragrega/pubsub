@@ -214,17 +214,20 @@ func (s *Subscriber) wrapMessages(in []types.Message) (out []pubsub.ReceivedMess
 		if x, ok := m.MessageAttributes[keyAttributeKey]; ok {
 			key = *x.StringValue
 		}
-		name, ok := m.MessageAttributes[nameAttributeKey]
-		if !ok {
-			return nil, fmt.Errorf("message without name: AWS message ID %s", awsMsgID)
+		var name string
+		if x, ok := m.MessageAttributes[nameAttributeKey]; ok {
+			name = *x.StringValue
+		}
+		if m.Body == nil {
+			return nil, fmt.Errorf("message with empty body: %s", awsMsgID)
 		}
 		out[i] = &message{
 			id:               msgID.StringValue,
 			version:          version.StringValue,
 			key:              &key,
-			name:             name.StringValue,
+			name:             &name,
 			body:             []byte(*m.Body),
-			attributes:       decodeAttributes(m.MessageAttributes),
+			attributes:       decodeCustomAttributes(m.MessageAttributes),
 			sqsMessageID:     m.MessageId,
 			sqsReceiptHandle: m.ReceiptHandle,
 			subscriber:       s,

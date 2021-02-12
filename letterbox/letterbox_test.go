@@ -171,7 +171,7 @@ func TestLetterbox_RequestFailures(t *testing.T) {
 			errs <- err
 		}()
 
-		err := <- errs
+		err := <-errs
 		if !errors.Is(err, ErrRequestAlreadySent) {
 			t.Fatal("expected error, got", err)
 		}
@@ -189,7 +189,7 @@ func TestLetterbox_RequestFailures(t *testing.T) {
 		})
 
 		_, err := letterbox.Request(ctx, "foo", &pubsub.Message{
-				ID: "123",
+			ID: "123",
 		})
 		if !errors.Is(err, context.Canceled) {
 			t.Fatal("expected timeout, got", err)

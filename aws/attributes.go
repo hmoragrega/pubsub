@@ -26,10 +26,12 @@ func encodeAttributes(env *pubsub.Envelope) map[string]snstypes.MessageAttribute
 			DataType:    stringDataType,
 			StringValue: &env.Version,
 		},
-		nameAttributeKey: {
+	}
+	if env.Name != "" {
+		attributes[nameAttributeKey] = snstypes.MessageAttributeValue{
 			DataType:    stringDataType,
 			StringValue: &env.Name,
-		},
+		}
 	}
 	if env.Key != "" {
 		attributes[keyAttributeKey] = snstypes.MessageAttributeValue{
@@ -48,7 +50,7 @@ func encodeAttributes(env *pubsub.Envelope) map[string]snstypes.MessageAttribute
 	return attributes
 }
 
-func decodeAttributes(attributes map[string]sqstypes.MessageAttributeValue) map[string]string {
+func decodeCustomAttributes(attributes map[string]sqstypes.MessageAttributeValue) map[string]string {
 	custom := make(map[string]string)
 	for k, v := range attributes {
 		if strings.Index(k, customAttributePrefix) != 0 {
