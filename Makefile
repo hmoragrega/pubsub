@@ -46,7 +46,3 @@ coverage-merge:
 	@echo 'mode: atomic' > $(COVERAGE_FILE)
 	@tail -q -n +2 $(COVERAGE_FILES) >> $(COVERAGE_FILE)
 	@sed -i'.original' "/internal/d" coverage.out $(COVERAGE_FILE)
-
-.PHONY: proto
-proto:
-	@protoc -I=./internal/proto --go_opt=paths=source_relative --go_out=./internal/proto test.proto

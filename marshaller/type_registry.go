@@ -8,20 +8,22 @@ import (
 )
 
 var (
-	errUnregisteredType  = errors.New("unregistered type")
-	errAlreadyRegistered = errors.New("type already registered")
+	ErrUnregisteredType  = errors.New("unregistered type")
+	ErrInstantiatingType = errors.New("cannot instantiate type")
+	ErrAlreadyRegistered = errors.New("type already registered")
+	ErrInvalidDataType   = errors.New("invalid data type")
 )
 
-type typeRegistry struct {
+type TypeRegistry struct {
 	types map[string]reflect.Type
 	mx    sync.RWMutex
 }
 
-func (r *typeRegistry) register(key string, v interface{}) (err error) {
+func (r *TypeRegistry) Register(key string, v interface{}) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			// named return
-			err = fmt.Errorf("%w (%T): %v", errInvalidDataType, v, r)
+			err = fmt.Errorf("%w (%T): %v", ErrInvalidDataType, v, r)
 		}
 	}()
 
@@ -33,7 +35,7 @@ func (r *typeRegistry) register(key string, v interface{}) (err error) {
 	}
 
 	if _, found := r.types[key]; found {
-		err = fmt.Errorf("%w: %q", errAlreadyRegistered, key)
+		err = fmt.Errorf("%w: %q", ErrAlreadyRegistered, key)
 		return // named return
 	}
 
@@ -41,7 +43,7 @@ func (r *typeRegistry) register(key string, v interface{}) (err error) {
 	return
 }
 
-func (r *typeRegistry) getType(topic, name string) (reflect.Type, error) {
+func (r *TypeRegistry) GetType(topic, name string) (reflect.Type, error) {
 	r.mx.RLock()
 	defer r.mx.RUnlock()
 
@@ -53,5 +55,22 @@ func (r *typeRegistry) getType(topic, name string) (reflect.Type, error) {
 		return t, nil
 	}
 
-	return nil, fmt.Errorf("%w: topic: %s name: %s", errUnregisteredType, topic, name)
+	return nil, fmt.Errorf("%w: topic: %s name: %s", ErrUnregisteredType, topic, name)
+}
+
+func (r *TypeRegistry) GetNew(topic, name string) (interface{}, error) {
+	t, err := r.GetType(topic, name)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("%w: %s: %v", ErrInstantiatingType, t, r)
+		}
+	}()
+
+	v := reflect.New(t).Interface()
+
+	return v, err
 }

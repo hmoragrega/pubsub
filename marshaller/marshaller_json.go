@@ -2,13 +2,15 @@ package marshaller
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
-	"reflect"
 
 	"github.com/hmoragrega/pubsub"
 )
 
 const jsonVersion0x01 = "json:0x01"
+
+var ErrUnmarshalling = errors.New("failed to unmarshall")
 
 var (
 	_ pubsub.Unmarshaller = (*JSONMarshaller)(nil)
@@ -18,12 +20,12 @@ var (
 // JSONMarshaller uses the standards json library
 // to encode and decode message.
 type JSONMarshaller struct {
-	registry typeRegistry
+	registry TypeRegistry
 }
 
 // Register an event type by event name or topic.
 func (m *JSONMarshaller) Register(key string, v interface{}) error {
-	return m.registry.register(key, v)
+	return m.registry.Register(key, v)
 }
 
 // Marshal marshals the message data as JSON.
@@ -35,22 +37,17 @@ func (m *JSONMarshaller) Marshal(v interface{}) ([]byte, string, error) {
 // Unmarshal unmarshall the message body as JSON.
 func (m *JSONMarshaller) Unmarshal(topic string, msg pubsub.ReceivedMessage) (*pubsub.Message, error) {
 	if v := msg.Version(); v != jsonVersion0x01 {
-		return nil, fmt.Errorf("%w: %s", errUnknownVersion, v)
+		return nil, fmt.Errorf("%w: %s", pubsub.ErrUnsupportedVersion, v)
 	}
 
-	t, err := m.registry.getType(msg.Name(), topic)
-	if err != nil {
-		return nil, err
-	}
-
-	data, err := m.new(t)
+	data, err := m.registry.GetNew(topic, msg.Name())
 	if err != nil {
 		return nil, err
 	}
 
 	err = json.Unmarshal(msg.Body(), data)
 	if err != nil {
-		return nil, fmt.Errorf("%w (%T): %v", errUnmarshalling, data, err)
+		return nil, fmt.Errorf("%w (%T): %v", ErrUnmarshalling, data, err)
 	}
 
 	return &pubsub.Message{
@@ -60,16 +57,4 @@ func (m *JSONMarshaller) Unmarshal(topic string, msg pubsub.ReceivedMessage) (*p
 		Attributes: msg.Attributes(),
 		Data:       data,
 	}, nil
-}
-
-func (m *JSONMarshaller) new(t reflect.Type) (v interface{}, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			err = fmt.Errorf("%w: %s: %v", errInstantiatingType, t, r)
-		}
-	}()
-
-	v = reflect.New(t).Interface()
-
-	return v, err
 }

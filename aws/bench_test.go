@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/hmoragrega/pubsub"
-	"github.com/hmoragrega/pubsub/internal/proto"
 	"github.com/hmoragrega/pubsub/marshaller"
 )
 
@@ -30,12 +29,12 @@ func TestBench(t *testing.T) {
 		topicARN         = createTestTopic(ctx, t, topic)
 		queueURL         = createTestQueue(ctx, t, queue)
 		queueARN         = MustGetResource(GetQueueARN(ctx, sqsTest, queueURL))
-		msgMarshaller    = &marshaller.ProtoTextMarshaller{}
+		msgMarshaller    = &marshaller.JSONMarshaller{}
 	)
 	subscribeTestTopic(ctx, t, topicARN, queueARN)
 	Must(AttachQueueForwardingPolicy(ctx, sqsTest, queueURL, queueARN, topicARN))
 
-	if err := msgMarshaller.Register(topic, &proto.Test{}); err != nil {
+	if err := msgMarshaller.Register(topic, &testBenchStruct{}); err != nil {
 		t.Fatal("cannot register type for proto message", err)
 	}
 
@@ -177,7 +176,7 @@ func publishMessages(t *testing.T, publisher pubsub.Publisher, topic string, mes
 		addMsg <- &pubsub.Message{
 			ID:   pubsub.NewID(),
 			Name: topic,
-			Data: &proto.Test{Payload: msgPayload},
+			Data: &testBenchStruct{Payload: msgPayload},
 		}
 	}
 	close(addMsg)
@@ -219,4 +218,8 @@ func (c *Counter) Count() uint64 {
 
 func (c *Counter) MeanPerSecond() float64 {
 	return float64(c.count) / time.Since(c.startTime).Seconds()
+}
+
+type testBenchStruct struct {
+	Payload []byte `json:"payload"`
 }

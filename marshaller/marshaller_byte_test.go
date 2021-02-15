@@ -31,7 +31,7 @@ func TestByteMarshaller_Marshal(t *testing.T) {
 		}, {
 			name:    "error",
 			data:    123,
-			wantErr: errInvalidDataType,
+			wantErr: ErrInvalidDataType,
 		},
 	}
 	for _, tc := range tests {
@@ -77,7 +77,7 @@ func TestByteMarshaller_Unmarshal(t *testing.T) {
 					return "foo"
 				},
 			},
-			wantErr: errUnknownVersion,
+			wantErr: pubsub.ErrUnsupportedVersion,
 		},
 		{
 			name: "byte slice",

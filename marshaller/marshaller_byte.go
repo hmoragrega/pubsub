@@ -1,7 +1,6 @@
 package marshaller
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/hmoragrega/pubsub"
@@ -11,8 +10,6 @@ const (
 	byteStringVersion = "byte:s"
 	byteSliceVersion  = "byte:b"
 )
-
-var errInvalidDataType = errors.New("invalid data type")
 
 var (
 	_ pubsub.Unmarshaller = (*ByteMarshaller)(nil)
@@ -32,7 +29,7 @@ func (m *ByteMarshaller) Marshal(data interface{}) ([]byte, string, error) {
 		return data.([]byte), byteSliceVersion, nil
 	}
 
-	return nil, "", fmt.Errorf("%w; expected string or byte slice, got %T", errInvalidDataType, data)
+	return nil, "", fmt.Errorf("%w; expected string or byte slice, got %T", ErrInvalidDataType, data)
 }
 
 // Unmarshal unmarshals a string or byte slice.
@@ -44,7 +41,7 @@ func (m *ByteMarshaller) Unmarshal(_ string, message pubsub.ReceivedMessage) (*p
 	case byteSliceVersion:
 		data = message.Body()
 	default:
-		return nil, fmt.Errorf("%w: %s", errUnknownVersion, v)
+		return nil, fmt.Errorf("%w: %s", pubsub.ErrUnsupportedVersion, v)
 	}
 
 	return &pubsub.Message{
