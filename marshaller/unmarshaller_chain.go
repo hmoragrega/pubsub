@@ -9,6 +9,8 @@ import (
 
 var ErrEmptyUnmarshallerChain = errors.New("empty unmarshaller chain")
 
+var _ pubsub.Unmarshaller = (*ChainUnmarshaller)(nil)
+
 type ChainUnmarshaller struct {
 	unmarshallers []pubsub.Unmarshaller
 }
@@ -18,11 +20,11 @@ func NewChainUnmarshaller(unmarshallers ...pubsub.Unmarshaller) *ChainUnmarshall
 }
 
 func (c *ChainUnmarshaller) Unmarshal(topic string, message pubsub.ReceivedMessage) (*pubsub.Message, error) {
-	var mErr error
 	if len(c.unmarshallers) == 0 {
 		return nil, ErrEmptyUnmarshallerChain
 	}
 
+	var mErr error
 	for _, um := range c.unmarshallers {
 		msg, err := um.Unmarshal(topic, message)
 		if err != nil {
