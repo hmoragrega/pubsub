@@ -14,6 +14,36 @@ type ReceivedMessageStub struct {
 	VersionFunc    func() string
 	AttributesFunc func() pubsub.Attributes
 	AckFunc        func(ctx context.Context) error
+	StringFunc     func() string
+}
+
+func NewNoOpReceivedMessage() *ReceivedMessageStub {
+	return &ReceivedMessageStub{
+		IDFunc: func() string {
+			return ""
+		},
+		NameFunc: func() string {
+			return ""
+		},
+		KeyFunc: func() string {
+			return ""
+		},
+		BodyFunc: func() []byte {
+			return nil
+		},
+		VersionFunc: func() string {
+			return ""
+		},
+		AttributesFunc: func() pubsub.Attributes {
+			return nil
+		},
+		AckFunc: func(ctx context.Context) error {
+			return nil
+		},
+		StringFunc: func() string {
+			return ""
+		},
+	}
 }
 
 func (m *ReceivedMessageStub) ID() string {
@@ -42,4 +72,8 @@ func (m *ReceivedMessageStub) Attributes() pubsub.Attributes {
 
 func (m *ReceivedMessageStub) Ack(ctx context.Context) error {
 	return m.AckFunc(ctx)
+}
+
+func (m *ReceivedMessageStub) String() string {
+	return m.StringFunc()
 }

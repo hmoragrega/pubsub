@@ -60,16 +60,12 @@ func TestJSONMarshaller_Marshal(t *testing.T) {
 func TestJSONMarshaller_Unmarshal(t *testing.T) {
 	const validKey = "valid"
 
-	dummyAttributes := map[string]string{
-		"some": "attribute",
-	}
-
 	tests := []struct {
-		name        string
-		topic       string
-		message     *stubs.ReceivedMessageStub
-		wantMessage *pubsub.Message
-		wantErr     error
+		name     string
+		topic    string
+		message  *stubs.ReceivedMessageStub
+		wantData interface{}
+		wantErr  error
 	}{
 		{
 			name: "unknown version",
@@ -102,29 +98,14 @@ func TestJSONMarshaller_Unmarshal(t *testing.T) {
 				NameFunc: func() string {
 					return ""
 				},
-				IDFunc: func() string {
-					return "123"
-				},
-				KeyFunc: func() string {
-					return "key"
-				},
-				AttributesFunc: func() pubsub.Attributes {
-					return dummyAttributes
-				},
 				BodyFunc: func() []byte {
 					return []byte(`{"text":"αlpha \u0026 Ώmega","number":12}`)
 				},
 			},
 			topic: validKey,
-			wantMessage: &pubsub.Message{
-				ID:   "123",
-				Name: "",
-				Key:  "key",
-				Data: &testJSONStruct{
-					Text:   "αlpha & Ώmega",
-					Number: 12,
-				},
-				Attributes: dummyAttributes,
+			wantData: &testJSONStruct{
+				Text:   "αlpha & Ώmega",
+				Number: 12,
 			},
 		},
 		{
@@ -136,29 +117,14 @@ func TestJSONMarshaller_Unmarshal(t *testing.T) {
 				NameFunc: func() string {
 					return validKey
 				},
-				IDFunc: func() string {
-					return "123"
-				},
-				KeyFunc: func() string {
-					return "key"
-				},
-				AttributesFunc: func() pubsub.Attributes {
-					return dummyAttributes
-				},
 				BodyFunc: func() []byte {
 					return []byte(`{"text":"αlpha \u0026 Ώmega","number":12}`)
 				},
 			},
 			topic: "foo topic",
-			wantMessage: &pubsub.Message{
-				ID:   "123",
-				Name: validKey,
-				Key:  "key",
-				Data: &testJSONStruct{
-					Text:   "αlpha & Ώmega",
-					Number: 12,
-				},
-				Attributes: dummyAttributes,
+			wantData: &testJSONStruct{
+				Text:   "αlpha & Ώmega",
+				Number: 12,
 			},
 		},
 	}
@@ -169,7 +135,7 @@ func TestJSONMarshaller_Unmarshal(t *testing.T) {
 				t.Fatalf("unpexected error registering a valid type; got %v", err)
 			}
 
-			gotMessage, gotError := m.Unmarshal(tc.topic, tc.message)
+			gotData, gotError := m.Unmarshal(tc.topic, tc.message)
 
 			if !errors.Is(gotError, tc.wantErr) {
 				t.Fatalf("unpexected error; got %v, want %v", gotError, tc.wantErr)
@@ -177,19 +143,7 @@ func TestJSONMarshaller_Unmarshal(t *testing.T) {
 			if gotError != nil {
 				return
 			}
-			if got, want := gotMessage.ID, tc.wantMessage.ID; got != want {
-				t.Errorf("unexpected ID; got %v, want %v", got, want)
-			}
-			if got, want := gotMessage.Name, tc.wantMessage.Name; got != want {
-				t.Errorf("unexpected name; got %v, want %v", got, want)
-			}
-			if got, want := gotMessage.Key, tc.wantMessage.Key; got != want {
-				t.Errorf("unexpected key; got %v, want %v", got, want)
-			}
-			if got, want := gotMessage.Data, tc.wantMessage.Data; !reflect.DeepEqual(got, want) {
-				t.Errorf("unexpected data; got %v, want %v", got, want)
-			}
-			if got, want := gotMessage.Attributes, tc.wantMessage.Attributes; !reflect.DeepEqual(got, want) {
+			if got, want := gotData, tc.wantData; !reflect.DeepEqual(got, want) {
 				t.Errorf("unexpected data; got %v, want %v", got, want)
 			}
 		})

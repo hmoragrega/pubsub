@@ -35,26 +35,20 @@ func (m *JSONMarshaller) Marshal(v interface{}) ([]byte, string, error) {
 }
 
 // Unmarshal unmarshall the message body as JSON.
-func (m *JSONMarshaller) Unmarshal(topic string, msg pubsub.ReceivedMessage) (*pubsub.Message, error) {
-	if v := msg.Version(); v != jsonVersion0x01 {
+func (m *JSONMarshaller) Unmarshal(topic string, message pubsub.ReceivedMessage) (interface{}, error) {
+	if v := message.Version(); v != jsonVersion0x01 {
 		return nil, fmt.Errorf("%w: %s", pubsub.ErrUnsupportedVersion, v)
 	}
 
-	data, err := m.registry.GetNew(topic, msg.Name())
+	data, err := m.registry.GetNew(topic, message.Name())
 	if err != nil {
 		return nil, err
 	}
 
-	err = json.Unmarshal(msg.Body(), data)
+	err = json.Unmarshal(message.Body(), data)
 	if err != nil {
 		return nil, fmt.Errorf("%w (%T): %v", ErrUnmarshalling, data, err)
 	}
 
-	return &pubsub.Message{
-		ID:         msg.ID(),
-		Name:       msg.Name(),
-		Key:        msg.Key(),
-		Attributes: msg.Attributes(),
-		Data:       data,
-	}, nil
+	return data, nil
 }

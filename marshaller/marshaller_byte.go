@@ -33,22 +33,13 @@ func (m *ByteMarshaller) Marshal(data interface{}) ([]byte, string, error) {
 }
 
 // Unmarshal unmarshals a string or byte slice.
-func (m *ByteMarshaller) Unmarshal(_ string, message pubsub.ReceivedMessage) (*pubsub.Message, error) {
-	var data interface{}
+func (m *ByteMarshaller) Unmarshal(_ string, message pubsub.ReceivedMessage) (interface{}, error) {
 	switch v := message.Version(); v {
 	case byteStringVersion:
-		data = string(message.Body())
+		return string(message.Body()), nil
 	case byteSliceVersion:
-		data = message.Body()
+		return message.Body(), nil
 	default:
 		return nil, fmt.Errorf("%w: %s", pubsub.ErrUnsupportedVersion, v)
 	}
-
-	return &pubsub.Message{
-		ID:         message.ID(),
-		Name:       message.Name(),
-		Key:        message.Key(),
-		Attributes: message.Attributes(),
-		Data:       data,
-	}, nil
 }

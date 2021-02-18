@@ -12,10 +12,10 @@ import (
 func TestChainUnmarshaller_Success(t *testing.T) {
 	msg := &pubsub.Message{ID: "foo"}
 	c := NewChainUnmarshaller(
-		pubsub.UnmarshallerFunc(func(topic string, message pubsub.ReceivedMessage) (*pubsub.Message, error) {
+		pubsub.UnmarshallerFunc(func(topic string, message pubsub.ReceivedMessage) (interface{}, error) {
 			return nil, errors.New("some error")
 		}),
-		pubsub.UnmarshallerFunc(func(topic string, message pubsub.ReceivedMessage) (*pubsub.Message, error) {
+		pubsub.UnmarshallerFunc(func(topic string, message pubsub.ReceivedMessage) (interface{}, error) {
 			return msg, nil
 		}),
 	)
@@ -33,11 +33,11 @@ func TestChainUnmarshaller_Failure(t *testing.T) {
 	one := make(chan struct{}, 1)
 	two := make(chan struct{}, 1)
 	c := NewChainUnmarshaller(
-		pubsub.UnmarshallerFunc(func(topic string, message pubsub.ReceivedMessage) (*pubsub.Message, error) {
+		pubsub.UnmarshallerFunc(func(topic string, message pubsub.ReceivedMessage) (interface{}, error) {
 			one <- struct{}{}
 			return nil, dummyError
 		}),
-		pubsub.UnmarshallerFunc(func(topic string, message pubsub.ReceivedMessage) (*pubsub.Message, error) {
+		pubsub.UnmarshallerFunc(func(topic string, message pubsub.ReceivedMessage) (interface{}, error) {
 			two <- struct{}{}
 			return nil, dummyError
 		}),

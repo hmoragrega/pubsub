@@ -19,7 +19,7 @@ func NewChainUnmarshaller(unmarshallers ...pubsub.Unmarshaller) *ChainUnmarshall
 	return &ChainUnmarshaller{unmarshallers: unmarshallers}
 }
 
-func (c *ChainUnmarshaller) Unmarshal(topic string, message pubsub.ReceivedMessage) (*pubsub.Message, error) {
+func (c *ChainUnmarshaller) Unmarshal(topic string, message pubsub.ReceivedMessage) (interface{}, error) {
 	if len(c.unmarshallers) == 0 {
 		return nil, ErrEmptyUnmarshallerChain
 	}

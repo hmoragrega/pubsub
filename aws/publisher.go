@@ -72,3 +72,12 @@ func stringPtr(b []byte) *string {
 		Len:  sh.Len,
 	}))
 }
+
+func byteFromStringPtr(s *string) []byte {
+	sh := (*reflect.StringHeader)(unsafe.Pointer(s))
+	return *(*[]byte)(unsafe.Pointer(&reflect.SliceHeader{
+		Data: sh.Data,
+		Len:  sh.Len,
+		Cap:  sh.Len,
+	}))
+}

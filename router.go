@@ -224,7 +224,7 @@ func (r *Router) consume(ctx context.Context, c *consumer) error {
 			continue
 		}
 
-		message, err := r.Unmarshaller.Unmarshal(c.topic, msg)
+		data, err := r.Unmarshaller.Unmarshal(c.topic, msg)
 		if err := r.check(ctx, r.OnUnmarshal, c, msg, err); err != nil {
 			return err
 		}
@@ -232,9 +232,7 @@ func (r *Router) consume(ctx context.Context, c *consumer) error {
 			continue
 		}
 
-		message.AttachReceivedMessage(msg)
-
-		err = c.handler.HandleMessage(ctx, message)
+		err = c.handler.HandleMessage(ctx, NewMessageFromReceived(msg, data))
 		if err := r.check(ctx, r.OnHandler, c, msg, err); err != nil {
 			return err
 		}

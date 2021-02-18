@@ -39,6 +39,9 @@ type ReceivedMessage interface {
 
 	// Ack acknowledges the message.
 	Ack(ctx context.Context) error
+
+	// String prints the message.
+	String() string
 }
 
 // Message represent the information that
@@ -62,6 +65,19 @@ type Message struct {
 	mx       sync.RWMutex
 }
 
+// NewMessageFromReceived builds a new message from a received one and
+// it's unmarshalled body.
+func NewMessageFromReceived(msg ReceivedMessage, data interface{}) *Message {
+	return &Message{
+		ID:         msg.ID(),
+		Name:       msg.Name(),
+		Key:        msg.Key(),
+		Data:       data,
+		Attributes: msg.Attributes(),
+		received:   msg,
+	}
+}
+
 // Ack acknowledges the message.
 func (m *Message) Ack(ctx context.Context) error {
 	m.mx.RLock()
@@ -72,16 +88,6 @@ func (m *Message) Ack(ctx context.Context) error {
 	}
 
 	return m.received.Ack(ctx)
-}
-
-// AttachReceivedMessage attaches the received message
-func (m *Message) AttachReceivedMessage(message ReceivedMessage) {
-	m.mx.Lock()
-	defer m.mx.Unlock()
-
-	if m != nil {
-		m.received = message
-	}
 }
 
 // SetAttribute sets an attribute.

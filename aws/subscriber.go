@@ -203,30 +203,31 @@ func (s *Subscriber) wrapMessages(in []types.Message) (out []pubsub.ReceivedMess
 			awsMsgID = *m.MessageId
 		}
 		msgID, ok := m.MessageAttributes[idAttributeKey]
-		if !ok {
+		if !ok || msgID.StringValue == nil {
 			return nil, fmt.Errorf("message without ID: AWS message ID %s", awsMsgID)
 		}
 		version, ok := m.MessageAttributes[versionAttributeKey]
-		if !ok {
+		if !ok || version.StringValue == nil  {
 			return nil, fmt.Errorf("message without version: AWS message ID %s", awsMsgID)
 		}
 		var key string
-		if x, ok := m.MessageAttributes[keyAttributeKey]; ok {
+		if x, ok := m.MessageAttributes[keyAttributeKey]; ok && x.StringValue != nil {
 			key = *x.StringValue
 		}
 		var name string
-		if x, ok := m.MessageAttributes[nameAttributeKey]; ok {
+		if x, ok := m.MessageAttributes[nameAttributeKey]; ok && x.StringValue != nil  {
 			name = *x.StringValue
 		}
-		if m.Body == nil {
-			return nil, fmt.Errorf("message with empty body: %s", awsMsgID)
+		var body string
+		if m.Body != nil {
+			body = *m.Body
 		}
 		out[i] = &message{
-			id:               msgID.StringValue,
-			version:          version.StringValue,
-			key:              &key,
-			name:             &name,
-			body:             []byte(*m.Body),
+			id:               *msgID.StringValue,
+			version:          *version.StringValue,
+			key:              key,
+			name:             name,
+			body:             body,
 			attributes:       decodeCustomAttributes(m.MessageAttributes),
 			sqsMessageID:     m.MessageId,
 			sqsReceiptHandle: m.ReceiptHandle,

@@ -13,27 +13,21 @@ type Marshaller interface {
 // It should be aware of the version.
 type Unmarshaller interface {
 	// Unmarshal unmarshalls the received message.
-	// It must return ErrUnsupportedVersion if it does not support it.
-	Unmarshal(topic string, message ReceivedMessage) (*Message, error)
+	Unmarshal(topic string, message ReceivedMessage) (data interface{}, err error)
 }
 
 // UnmarshallerFunc will decode the received message.
 // It should be aware of the version.
-type UnmarshallerFunc func(topic string, message ReceivedMessage) (*Message, error)
+type UnmarshallerFunc func(topic string, message ReceivedMessage) (data interface{}, err error)
 
-func (f UnmarshallerFunc) Unmarshal(topic string, message ReceivedMessage) (*Message, error) {
+func (f UnmarshallerFunc) Unmarshal(topic string, message ReceivedMessage) (data interface{}, err error) {
 	return f(topic, message)
 }
 
-// NoOpUnmarshaller will pass the message data raw byte slice.
+// NoOpUnmarshaller will pass the message data raw byte slice
+// without taking the version into account.
 func NoOpUnmarshaller() Unmarshaller {
-	return UnmarshallerFunc(func(topic string, message ReceivedMessage) (*Message, error) {
-		return &Message{
-			ID:         message.ID(),
-			Name:       message.Name(),
-			Key:        message.Key(),
-			Attributes: message.Attributes(),
-			Data:       message.Body(),
-		}, nil
+	return UnmarshallerFunc(func(topic string, message ReceivedMessage) (data interface{}, err error) {
+		return message.Body(), nil
 	})
 }

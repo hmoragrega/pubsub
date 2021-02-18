@@ -164,18 +164,18 @@ func TestRouter_Run(t *testing.T) {
 		var checkpointsCalled int
 
 		ctx, cancel := context.WithCancel(context.Background())
-		msg := stubs.ReceivedMessageStub{
-			AckFunc: func(ctx context.Context) error {
-				cancel()
-				return nil
-			},
+		msg := stubs.NewNoOpReceivedMessage()
+		msg.AckFunc = func(ctx context.Context) error {
+			cancel()
+			return nil
 		}
+
 		verifyCheckpoint := func(checkpoint string, topic string, message pubsub.ReceivedMessage, err error) error {
 			checkpointsCalled++
 			if err != nil {
 				return err
 			}
-			if message.(*stubs.ReceivedMessageStub) != &msg {
+			if message.(*stubs.ReceivedMessageStub) != msg {
 				return fmt.Errorf("%s mesage is not the equal; got %+v", checkpoint, message)
 			}
 			if topic != subscriberTopic {
@@ -184,9 +184,6 @@ func TestRouter_Run(t *testing.T) {
 			return nil
 		}
 		router := pubsub.Router{
-			Unmarshaller: pubsub.UnmarshallerFunc(func(_ string, _ pubsub.ReceivedMessage) (*pubsub.Message, error) {
-				return &pubsub.Message{}, nil
-			}),
 			OnReceive: func(_ context.Context, topic string, message pubsub.ReceivedMessage, err error) error {
 				return verifyCheckpoint("OnReceive", topic, message, err)
 			},
@@ -204,7 +201,7 @@ func TestRouter_Run(t *testing.T) {
 		s := &stubs.SubscriberStub{
 			SubscribeFunc: func() (<-chan pubsub.Next, error) {
 				next := make(chan pubsub.Next, 1)
-				next <- pubsub.Next{Message: &msg}
+				next <- pubsub.Next{Message: msg}
 
 				return next, nil
 			},
@@ -248,17 +245,15 @@ func TestRouter_Run(t *testing.T) {
 			},
 		}
 		for _, router := range routers {
-			router.Unmarshaller = pubsub.UnmarshallerFunc(func(_ string, _ pubsub.ReceivedMessage) (*pubsub.Message, error) {
-				return &pubsub.Message{}, nil
-			})
 			s := &stubs.SubscriberStub{
 				SubscribeFunc: func() (<-chan pubsub.Next, error) {
+					msg := stubs.NewNoOpReceivedMessage()
+					msg.AckFunc = func(ctx context.Context) error {
+						return nil
+					}
+
 					next := make(chan pubsub.Next, 1)
-					next <- pubsub.Next{Message: &stubs.ReceivedMessageStub{
-						AckFunc: func(ctx context.Context) error {
-							return nil
-						},
-					}}
+					next <- pubsub.Next{Message: msg}
 
 					return next, nil
 				},
@@ -283,10 +278,10 @@ func TestRouter_Run(t *testing.T) {
 			SubscribeFunc: func() (<-chan pubsub.Next, error) {
 				next := make(chan pubsub.Next, 5)
 				next <- pubsub.Next{Err: errorDummy}
-				next <- pubsub.Next{Message: &stubs.ReceivedMessageStub{}}
-				next <- pubsub.Next{Message: &stubs.ReceivedMessageStub{}}
-				next <- pubsub.Next{Message: &stubs.ReceivedMessageStub{}}
-				next <- pubsub.Next{Message: &stubs.ReceivedMessageStub{}}
+				next <- pubsub.Next{Message: stubs.NewNoOpReceivedMessage()}
+				next <- pubsub.Next{Message: stubs.NewNoOpReceivedMessage()}
+				next <- pubsub.Next{Message: stubs.NewNoOpReceivedMessage()}
+				next <- pubsub.Next{Message: stubs.NewNoOpReceivedMessage()}
 				return next, nil
 			},
 			StopFunc: func(ctx context.Context) error {
@@ -298,12 +293,12 @@ func TestRouter_Run(t *testing.T) {
 			handlerCalls      int
 		)
 		router := pubsub.Router{
-			Unmarshaller: pubsub.UnmarshallerFunc(func(topic string, msg pubsub.ReceivedMessage) (*pubsub.Message, error) {
+			Unmarshaller: pubsub.UnmarshallerFunc(func(topic string, msg pubsub.ReceivedMessage) (interface{}, error) {
 				unmarshallerCalls++
 				if unmarshallerCalls == 1 {
 					return nil, errorDummy
 				}
-				return &pubsub.Message{}, nil
+				return nil, nil
 			}),
 			DisableAutoAck: true,
 		}

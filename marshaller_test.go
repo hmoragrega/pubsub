@@ -35,19 +35,7 @@ func TestNoOpUnmarshaller(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error; got %v, want nil", err)
 	}
-	if got, want := got.ID, msg.ID(); got != want {
-		t.Fatalf("unexpected id; got %v, want %v", got, want)
-	}
-	if got, want := got.Name, msg.Name(); got != want {
-		t.Fatalf("unexpected name; got %v, want %v", got, want)
-	}
-	if got, want := got.Key, msg.Key(); got != want {
-		t.Fatalf("unexpected key; got %v, want %v", got, want)
-	}
-	if got, want := got.Data.([]byte), msg.Body(); !reflect.DeepEqual(got, want) {
+	if got, want := got.([]byte), msg.Body(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("unexpected data; got %v, want %v", got, want)
-	}
-	if got, want := got.Attributes, msg.Attributes(); !reflect.DeepEqual(got, want) {
-		t.Fatalf("unexpected id; got %v, want %v", got, want)
 	}
 }
