@@ -51,6 +51,12 @@ type Router struct {
 	// clean way. No timeout by default.
 	StopTimeout time.Duration
 
+	// MessageContext is an optional function that modify the context
+	// that will be passed along during the message live-cycle:
+	//  * in the message handler
+	//  * in all the checkpoints.
+	MessageContext func(parent context.Context, message ReceivedMessage) context.Context
+
 	// Optional callback invoked when the consumer
 	// reports an error.
 	OnReceive Checkpoint
@@ -217,6 +223,8 @@ func (r *Router) consume(ctx context.Context, c *consumer) error {
 		}
 
 		msg, err := next.Message, next.Err
+		ctx := r.messageContext(ctx, msg)
+
 		if err := r.check(ctx, r.OnReceive, c, msg, err); err != nil {
 			return err
 		}
@@ -276,4 +284,11 @@ func (r *Router) start() error {
 
 	r.status = started
 	return nil
+}
+
+func (r *Router) messageContext(ctx context.Context, msg ReceivedMessage) context.Context {
+	if r.MessageContext == nil || msg == nil {
+		return ctx
+	}
+	return r.MessageContext(ctx, msg)
 }
