@@ -79,3 +79,28 @@ func TestPublisher_PublishHandlerDoNotSend(t *testing.T) {
 		t.Fatalf("expected error; got %v, want %v", err, dummyErr)
 	}
 }
+
+func TestPublisher_Wrapper(t *testing.T) {
+	injectedValue := "some-value"
+	attributeKey := "some-key"
+	ctxKey := "some-ctx-key"
+
+	innerPublisher := pubsub.PublisherFunc(func(ctx context.Context, topic string, envelopes ...*pubsub.Message) error {
+		for _, e := range envelopes {
+			if e.Attributes[attributeKey] != injectedValue {
+				t.Fatalf("message does not have the injected attribute; got %+v", e.Attributes)
+			}
+		}
+		return nil
+	})
+
+	p := pubsub.WrapPublisher(innerPublisher, pubsub.CtxAttributeInjector(attributeKey, func(ctx context.Context) string {
+		return ctx.Value(ctxKey).(string)
+	}))
+
+	ctx := context.WithValue(context.Background(), ctxKey, injectedValue)
+	err := p.Publish(ctx, "foo-topic", &pubsub.Message{})
+	if err != nil {
+		t.Fatal("unexpected error publishing", err)
+	}
+}

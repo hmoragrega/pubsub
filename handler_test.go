@@ -17,7 +17,7 @@ func TestDispatcher_MissingHandler(t *testing.T) {
 }
 
 func TestRecoverer(t *testing.T) {
-	wrappedHandler := Wrapper(HandlerFunc(func(ctx context.Context, message *Message) error {
+	wrappedHandler := WrapHandler(HandlerFunc(func(ctx context.Context, message *Message) error {
 		panic("problem")
 	}), Recoverer)
 

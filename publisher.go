@@ -111,3 +111,36 @@ func (p *MarshallerPublisher) Handler(topic string, handler PublisherHandler) Ha
 		return p.Publish(ctx, topic, messages...)
 	})
 }
+
+type PublisherMiddleware = func(Publisher) Publisher
+
+// CtxExtractorFunc is a function that given a
+// context returns a value. Return empty string
+// if not present.
+type CtxExtractorFunc func(ctx context.Context) string
+
+// CtxAttributeInjector is a publisher middleware that can set message
+// attributes based on value present in the context.
+func CtxAttributeInjector(attributeName string, extract CtxExtractorFunc) PublisherMiddleware {
+	return func(publisher Publisher) Publisher {
+		return PublisherFunc(func(ctx context.Context, topic string, envelopes ...*Message) error {
+			v := extract(ctx)
+			if v != "" {
+				for _, e := range envelopes {
+					e.SetAttribute(attributeName, v)
+				}
+			}
+			return publisher.Publish(ctx, topic, envelopes...)
+		})
+	}
+}
+
+// WrapPublisher will wrap the publisher in the given middlewares.
+func WrapPublisher(publisher Publisher, middlewares ...PublisherMiddleware) Publisher {
+	return PublisherFunc(func(ctx context.Context, topic string, envelopes ...*Message) error {
+		for _, mw := range middlewares {
+			publisher = mw(publisher)
+		}
+		return publisher.Publish(ctx, topic, envelopes...)
+	})
+}
