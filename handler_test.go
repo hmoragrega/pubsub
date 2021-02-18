@@ -15,3 +15,14 @@ func TestDispatcher_MissingHandler(t *testing.T) {
 		t.Fatalf("expected missing handler error; got %+v", err)
 	}
 }
+
+func TestRecoverer(t *testing.T) {
+	wrappedHandler := Wrapper(HandlerFunc(func(ctx context.Context, message *Message) error {
+		panic("problem")
+	}), Recoverer)
+
+	err := wrappedHandler.HandleMessage(context.Background(), nil)
+	if err == nil {
+		t.Fatalf("expected error from recovered panic; got %v", err)
+	}
+}

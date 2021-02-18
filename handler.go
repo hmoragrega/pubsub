@@ -34,3 +34,26 @@ func Dispatcher(handlers map[string]Handler) HandlerFunc {
 		return h.HandleMessage(ctx, message)
 	}
 }
+
+// Recoverer will prevent panics in the handler
+func Recoverer(next Handler) Handler {
+	return HandlerFunc(func(ctx context.Context, message *Message) (err error) {
+		defer func() {
+			if r := recover(); r != nil {
+				err = fmt.Errorf("panic recovered: %v", r)
+			}
+		}()
+		err = next.HandleMessage(ctx, message)
+		return
+	})
+}
+
+// Wrapper will wrap the handler in the given middlewares.
+func Wrapper(handler Handler, middlewares ...func(Handler) Handler) HandlerFunc {
+	return func(ctx context.Context, message *Message) (err error) {
+		for _, mw := range middlewares {
+			handler = mw(handler)
+		}
+		return handler.HandleMessage(ctx, message)
+	}
+}
