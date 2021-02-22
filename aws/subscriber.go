@@ -174,23 +174,31 @@ func (s *Subscriber) consume(ctx context.Context) {
 			MessageAttributeNames: allAttributes,
 		})
 		if err != nil {
-			// aws/http library does not return
-			// a wrapped context.Canceled
-			if ctx.Err() != nil {
+			select {
+			case <-ctx.Done():
 				return
+			case s.next <- pubsub.Next{Err: err}:
+				continue
 			}
-			s.next <- pubsub.Next{Err: err}
-			continue
 		}
 
 		messages, err := s.wrapMessages(out.Messages)
 		if err != nil {
-			s.next <- pubsub.Next{Err: err}
-			continue
+			select {
+			case <-ctx.Done():
+				return
+			case s.next <- pubsub.Next{Err: err}:
+				continue
+			}
 		}
 
 		for _, message := range messages {
-			s.next <- pubsub.Next{Message: message}
+			select {
+			case <-ctx.Done():
+				return
+			case s.next <- pubsub.Next{Message: message}:
+				continue
+			}
 		}
 	}
 }
