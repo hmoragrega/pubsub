@@ -300,7 +300,7 @@ func TestRouter_Run(t *testing.T) {
 				}
 				return nil, nil
 			}),
-			DisableAutoAck: true,
+			AckDecider: pubsub.DisableAutoAck,
 			MessageContext: func(parent context.Context, _ pubsub.ReceivedMessage) context.Context {
 				return parent
 			},

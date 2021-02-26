@@ -37,15 +37,24 @@ type consumer struct {
 // of the router.
 type Checkpoint func(ctx context.Context, topic string, msg ReceivedMessage, err error) error
 
+// DisableAutoAck is acknowledgement decider function that disables the router from
+// auto-acknowledging messages.
+func DisableAutoAck(ctx context.Context, topic string, msg ReceivedMessage, err error) bool {
+	return false
+}
+
 // Router groups consumers and runs them together.
 type Router struct {
 	// Message unmarshaller. If none provided
 	// NoOpUnmarshaller will be used.
 	Unmarshaller Unmarshaller
 
-	// DisableAutoAck disables automatic acknowledgement of the
-	// messages. The handler will be responsible for it.
-	DisableAutoAck bool
+	// AckDecider is an optional method that will decide if the message should
+	// be acknowledged or not; it receives the topic, the message and the result of
+	// the handler.
+	// By default, the message will be acknowledged if there was no error handling it.
+	// To disable the automatic acknowledgements pass the DisableAutoAck function
+	AckDecider func(ctx context.Context, topic string, msg ReceivedMessage, err error) bool
 
 	// StopTimeout time to wait for all the consumer to stop in a
 	// clean way. No timeout by default.
@@ -244,10 +253,7 @@ func (r *Router) consume(ctx context.Context, c *consumer) error {
 		if err := r.check(ctx, r.OnHandler, c, msg, err); err != nil {
 			return err
 		}
-		if err != nil {
-			continue
-		}
-		if r.DisableAutoAck {
+		if !r.shouldAck(ctx, c, msg, err) {
 			continue
 		}
 		err = msg.Ack(ctx)
@@ -294,4 +300,11 @@ func (r *Router) messageContext(ctx context.Context, msg ReceivedMessage) contex
 		return ctx
 	}
 	return r.MessageContext(ctx, msg)
+}
+
+func (r *Router) shouldAck(ctx context.Context, c *consumer, msg ReceivedMessage, err error) bool {
+	if r.AckDecider == nil {
+		return err == nil
+	}
+	return r.AckDecider(ctx, c.topic, msg, err)
 }
