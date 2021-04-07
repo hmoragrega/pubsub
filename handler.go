@@ -50,10 +50,10 @@ func Recoverer(next Handler) Handler {
 
 // WrapHandler will wrap the handler in the given middlewares.
 func WrapHandler(handler Handler, middlewares ...func(Handler) Handler) Handler {
+	for _, mw := range middlewares {
+		handler = mw(handler)
+	}
 	return HandlerFunc(func(ctx context.Context, message *Message) (err error) {
-		for _, mw := range middlewares {
-			handler = mw(handler)
-		}
 		return handler.HandleMessage(ctx, message)
 	})
 }
