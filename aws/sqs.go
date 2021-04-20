@@ -48,15 +48,10 @@ func DeleteQueue(ctx context.Context, svc *sqs.Client, queueURL string) error {
 
 // AttachQueueForwardingPolicy attaches a queue policy that enables
 // a topic to send messages to it.
-func AttachQueueForwardingPolicy(ctx context.Context, svc *sqs.Client, queueURL, queueARN, topicARN string) error {
-	_, err := svc.SetQueueAttributes(ctx, &sqs.SetQueueAttributesInput{
-		QueueUrl: &queueURL,
-		Attributes: map[string]string{
-			"Policy": strings.TrimSpace(fmt.Sprintf(`
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
+func AttachQueueForwardingPolicy(ctx context.Context, svc *sqs.Client, queueURL, queueARN string, topicARNs ...string) error {
+	statements := make([]string, len(topicARNs))
+	for i, topicARN := range topicARNs {
+		statements[i] = fmt.Sprintf(`{
       "Effect": "Allow",
       "Principal": "*",
       "Action": "sqs:SendMessage",
@@ -67,9 +62,20 @@ func AttachQueueForwardingPolicy(ctx context.Context, svc *sqs.Client, queueURL,
         }
       }
     }
+`, queueARN, topicARN)
+	}
+
+	_, err := svc.SetQueueAttributes(ctx, &sqs.SetQueueAttributesInput{
+		QueueUrl: &queueURL,
+		Attributes: map[string]string{
+			"Policy": strings.TrimSpace(fmt.Sprintf(`
+{
+  "Version": "2012-10-17",
+  "Statement": [
+	%s
   ]
 }
-`, queueARN, topicARN))}})
+`, strings.Join(statements, ",\n")))}})
 
 	if err != nil {
 		return fmt.Errorf("cannot create forwarding policy: %v", err)
