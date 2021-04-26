@@ -2,7 +2,9 @@ package aws
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -10,7 +12,13 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sqs/types"
 )
 
+const (
+	QueueForwardingPolicyAttribute = "Policy"
+	QueueRedrivePolicyAttribute    = "RedrivePolicy"
+)
+
 // CreateQueue creates a SQS queue.
+// Returns the QueueURL.
 func CreateQueue(ctx context.Context, svc *sqs.Client, queueName string) (string, error) {
 	out, err := svc.CreateQueue(ctx, &sqs.CreateQueueInput{
 		QueueName: aws.String(queueName),
@@ -46,9 +54,30 @@ func DeleteQueue(ctx context.Context, svc *sqs.Client, queueURL string) error {
 	return err
 }
 
-// AttachQueueForwardingPolicy attaches a queue policy that enables
-// a topic to send messages to it.
-func AttachQueueForwardingPolicy(ctx context.Context, svc *sqs.Client, queueURL, queueARN string, topicARNs ...string) error {
+// SetQueueAttributes sets the queue attributes.
+func SetQueueAttributes(ctx context.Context, svc *sqs.Client, queueURL string, attributes map[string]string) error {
+	_, err := svc.SetQueueAttributes(ctx, &sqs.SetQueueAttributesInput{
+		QueueUrl:   &queueURL,
+		Attributes: attributes,
+	})
+	if err != nil {
+		return fmt.Errorf("cannot set queue attributes: %v", err)
+	}
+	return nil
+}
+
+// RedrivePolicy return the string to use for the redrive policy attribute of a queue.
+func RedrivePolicy(deadLetterQueueARN string, maxReceiveCount int) string {
+	out, _ := json.Marshal(map[string]string{
+		"deadLetterTargetArn": deadLetterQueueARN,
+		"maxReceiveCount":     strconv.Itoa(maxReceiveCount),
+	})
+	return string(out)
+}
+
+// ForwardingPolicy generates the forwarding policy for a queue to be able to receive
+// messages from the given topics.
+func ForwardingPolicy(queueARN string, topicARNs ...string) string {
 	statements := make([]string, len(topicARNs))
 	for i, topicARN := range topicARNs {
 		statements[i] = fmt.Sprintf(`{
@@ -65,20 +94,19 @@ func AttachQueueForwardingPolicy(ctx context.Context, svc *sqs.Client, queueURL,
 `, queueARN, topicARN)
 	}
 
-	_, err := svc.SetQueueAttributes(ctx, &sqs.SetQueueAttributesInput{
-		QueueUrl: &queueURL,
-		Attributes: map[string]string{
-			"Policy": strings.TrimSpace(fmt.Sprintf(`
+	return strings.TrimSpace(fmt.Sprintf(`
 {
   "Version": "2012-10-17",
   "Statement": [
 	%s
   ]
 }
-`, strings.Join(statements, ",\n")))}})
+`, strings.Join(statements, ",\n")))
+}
 
-	if err != nil {
-		return fmt.Errorf("cannot create forwarding policy: %v", err)
-	}
-	return nil
+// AttachQueueForwardingPolicy attaches a queue policy that enables a topic to send messages to it.
+func AttachQueueForwardingPolicy(ctx context.Context, svc *sqs.Client, queueURL, queueARN string, topicARNs ...string) error {
+	return SetQueueAttributes(ctx, svc, queueURL, map[string]string{
+		QueueForwardingPolicyAttribute: ForwardingPolicy(queueARN, topicARNs...),
+	})
 }

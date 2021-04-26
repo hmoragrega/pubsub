@@ -26,9 +26,10 @@ var (
 	ErrAlreadyStopped    = errors.New("already stopped")
 	ErrMissingConfig     = errors.New("missing configuration")
 
-	maxNumberOfMessages int32 = 10
-	waitTimeSeconds     int32 = 20
-	allAttributes             = []string{"All"}
+	maxNumberOfMessages  = 10
+	maxWaitTimeSeconds   = 20
+	maxVisibilityTimeout = 12 * 60 * 60 // 12 hours
+	allAttributes        = []string{"All"}
 )
 
 var _ pubsub.Subscriber = (*Subscriber)(nil)
@@ -79,6 +80,16 @@ type Subscriber struct {
 	// AckConfig configuration the acknowledgements behaviour
 	ackConfig AckConfig
 
+	// Maximum number of messages per batch retrieve. Default 10.
+	maxMessages int
+
+	// Maximum time to wait while poling for new messages. Default 20.
+	waitTime *int
+
+	// The duration (in seconds) that the received messages are hidden
+	// from subsequent retrieve requests after being retrieved.
+	visibilityTimeout int
+
 	next        chan pubsub.Next
 	ackStrategy ackStrategy
 	stopped     chan struct{}
@@ -91,6 +102,32 @@ type Subscriber struct {
 func WithAck(cfg AckConfig) func(s *Subscriber) {
 	return func(s *Subscriber) {
 		s.ackConfig = cfg
+	}
+}
+
+// WithMaxMessages configures the number of messages to retrieve per request.
+// If max messages <= 0 or > 10 the default will be used (10 messages).
+func WithMaxMessages(maxMessages int) func(s *Subscriber) {
+	return func(s *Subscriber) {
+		s.maxMessages = maxMessages
+	}
+}
+
+// WithWaitTime configures the number of messages to retrieve per request.
+// If max messages <= 0 or > 10 the default will be used (10 messages).
+func WithWaitTime(waitTime int) func(s *Subscriber) {
+	return func(s *Subscriber) {
+		s.waitTime = &waitTime
+	}
+}
+
+// WithVisibilityTimeout configures the time that the retrieved messages
+// will be hidden from subsequent retrieve requests.
+// If visibilityTimeout <= 0 the queue's default will be used.
+// If it's greater than the 12 hours maximum, the maximum will be used: 43200s.
+func WithVisibilityTimeout(visibilityTimeout int) func(s *Subscriber) {
+	return func(s *Subscriber) {
+		s.visibilityTimeout = visibilityTimeout
 	}
 }
 
@@ -119,6 +156,21 @@ func (s *Subscriber) Subscribe() (<-chan pubsub.Next, error) {
 	}
 	if s.queueURL == "" {
 		return nil, fmt.Errorf("%w: QueueURL cannot be empty", ErrMissingConfig)
+	}
+	if s.maxMessages <= 0 || s.maxMessages > maxNumberOfMessages {
+		s.maxMessages = maxNumberOfMessages
+	}
+	if s.waitTime == nil {
+		s.waitTime = &maxWaitTimeSeconds
+	}
+	if *s.waitTime < 0 || *s.waitTime > maxWaitTimeSeconds {
+		s.waitTime = &maxWaitTimeSeconds
+	}
+	if s.visibilityTimeout < 0 {
+		s.visibilityTimeout = 0
+	}
+	if s.visibilityTimeout > maxVisibilityTimeout {
+		s.visibilityTimeout = maxVisibilityTimeout
 	}
 
 	if s.ackConfig.Async || s.ackConfig.BatchSize > 0 {
@@ -165,14 +217,17 @@ func (s *Subscriber) Stop(ctx context.Context) (err error) {
 func (s *Subscriber) consume(ctx context.Context) {
 	defer close(s.stopped)
 
+	in := &sqs.ReceiveMessageInput{
+		QueueUrl:              &s.queueURL,
+		MaxNumberOfMessages:   int32(s.maxMessages),
+		WaitTimeSeconds:       int32(*s.waitTime),
+		VisibilityTimeout:     int32(s.visibilityTimeout),
+		AttributeNames:        []types.QueueAttributeName{"All"},
+		MessageAttributeNames: allAttributes,
+	}
+
 	for {
-		out, err := s.sqs.ReceiveMessage(ctx, &sqs.ReceiveMessageInput{
-			QueueUrl:              &s.queueURL,
-			MaxNumberOfMessages:   maxNumberOfMessages,
-			WaitTimeSeconds:       waitTimeSeconds,
-			AttributeNames:        []types.QueueAttributeName{"All"},
-			MessageAttributeNames: allAttributes,
-		})
+		out, err := s.sqs.ReceiveMessage(ctx, in)
 		if err != nil {
 			select {
 			case <-ctx.Done():
@@ -215,7 +270,7 @@ func (s *Subscriber) wrapMessages(in []types.Message) (out []pubsub.ReceivedMess
 			return nil, fmt.Errorf("message without ID: AWS message ID %s", awsMsgID)
 		}
 		version, ok := m.MessageAttributes[versionAttributeKey]
-		if !ok || version.StringValue == nil  {
+		if !ok || version.StringValue == nil {
 			return nil, fmt.Errorf("message without version: AWS message ID %s", awsMsgID)
 		}
 		var key string
@@ -223,7 +278,7 @@ func (s *Subscriber) wrapMessages(in []types.Message) (out []pubsub.ReceivedMess
 			key = *x.StringValue
 		}
 		var name string
-		if x, ok := m.MessageAttributes[nameAttributeKey]; ok && x.StringValue != nil  {
+		if x, ok := m.MessageAttributes[nameAttributeKey]; ok && x.StringValue != nil {
 			name = *x.StringValue
 		}
 		var body string

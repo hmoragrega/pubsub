@@ -13,12 +13,12 @@ env:
 
 .PHONY: up
 up:
-	@docker-compose up -d
+	@docker compose up -d
 	@./scripts/wait-for-sqs.sh
 
 .PHONY: down
 down:
-	@docker-compose down
+	@docker compose down
 
 .PHONY: test
 test: up integration
@@ -35,6 +35,10 @@ clean:
 
 .PHONY: coverage
 coverage: clean test coverage-merge
+	@cd aws && go tool cover -func=../$(COVERAGE_FILE)
+
+.PHONY: coverage-ci
+coverage-ci: integration coverage-merge
 	@cd aws && go tool cover -func=../$(COVERAGE_FILE)
 
 .PHONY: coverage-html

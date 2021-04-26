@@ -11,6 +11,7 @@ import (
 	"os"
 	"reflect"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -28,6 +29,7 @@ import (
 var (
 	sqsTest *sqs.Client
 	snsTest *sns.Client
+	fakeAWS bool
 )
 
 func TestMain(m *testing.M) {
@@ -37,6 +39,7 @@ func TestMain(m *testing.M) {
 		config.WithRegion("eu-west-3"),
 	}
 	if os.Getenv("AWS") != "true" {
+		fakeAWS = true
 		opts = append(opts,
 			config.WithCredentialsProvider(
 				credentials.NewStaticCredentialsProvider("id", "secret", "token"),
@@ -513,6 +516,94 @@ func TestSubscriberAsyncAckTicker(t *testing.T) {
 	err = s.Stop(ctx)
 	if !errors.Is(err, ErrAcknowledgement) {
 		t.Fatalf("expected ack error reported on stopping, got: %v", ErrAcknowledgement)
+	}
+}
+
+func TestDeadLetterQueue(t *testing.T) {
+	if fakeAWS {
+		t.Skip("go-aws doesn't support this test")
+		return
+	}
+
+	var (
+		ctx                 = context.Background()
+		testTopic           = "dlq-test"
+		attempts            = 3
+		topicARN            = createTestTopic(ctx, t, "dlq")
+		sourceQueueURL      = createTestQueue(ctx, t, "dlq-source")
+		destinationQueueURL = createTestQueue(ctx, t, "dlq-destination")
+		sourceQueueARN      = MustGetResource(GetQueueARN(ctx, sqsTest, sourceQueueURL))
+		destinationQueueARN = MustGetResource(GetQueueARN(ctx, sqsTest, destinationQueueURL))
+		publisher           = NewSNSPublisher(snsTest, map[string]string{testTopic: topicARN})
+		sourceSub           = NewSQSSubscriber(sqsTest, sourceQueueURL,
+			WithVisibilityTimeout(1),
+			WithMaxMessages(1),
+			WithWaitTime(5),
+		)
+		dlqSub = NewSQSSubscriber(sqsTest, destinationQueueURL,
+			WithMaxMessages(1),
+		)
+	)
+
+	subscribeTestTopic(ctx, t, topicARN, sourceQueueARN)
+	Must(SetQueueAttributes(ctx, sqsTest, sourceQueueURL, map[string]string{
+		QueueForwardingPolicyAttribute: ForwardingPolicy(sourceQueueARN, topicARN),
+		QueueRedrivePolicyAttribute:    RedrivePolicy(destinationQueueARN, attempts),
+	}))
+
+	message := "this is the message"
+
+	err := publisher.Publish(ctx, testTopic, &pubsub.Envelope{
+		ID:      pubsub.NewID(),
+		Version: "raw",
+		Body:    []byte(message),
+	})
+	if err != nil {
+		t.Fatal("cannot publish test message", err)
+	}
+
+	msgs, err := sourceSub.Subscribe()
+	if err != nil {
+		t.Fatal("cannot subscribe to the source queue", err)
+	}
+	t.Cleanup(func() {
+		_ = sourceSub.Stop(ctx)
+	})
+
+	for attempts > 0 {
+		select {
+		case <-time.NewTimer(10 * time.Second).C:
+			t.Fatal("timeout receiving the messages")
+		case r := <-msgs:
+			if r.Err != nil {
+				t.Fatal("error receiving message", r.Err)
+
+			}
+		}
+		attempts--
+	}
+
+	dlqMsgs, err := dlqSub.Subscribe()
+	if err != nil {
+		t.Fatal("cannot subscribe to DLQ queue", err)
+	}
+	t.Cleanup(func() {
+		_ = dlqSub.Stop(context.Background())
+	})
+
+	select {
+	case <-time.NewTimer(5 * time.Second).C:
+		t.Fatal("timeout waiting for DLQ messages")
+	case r := <-dlqMsgs:
+		if r.Err != nil {
+			t.Fatal("error receiving message", r.Err)
+		}
+		if body := string(r.Message.Body()); !strings.EqualFold(message, body) {
+			t.Fatalf("message boy does not match, got %s", body)
+		}
+		if err := r.Message.Ack(ctx); err != nil {
+			t.Fatal("could not ack DLQ message", err)
+		}
 	}
 }
 
