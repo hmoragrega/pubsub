@@ -37,6 +37,10 @@ clean:
 coverage: clean test coverage-merge
 	@cd aws && go tool cover -func=../$(COVERAGE_FILE)
 
+.PHONY: coverage-ci
+coverage: integration coverage-merge
+	@cd aws && go tool cover -func=../$(COVERAGE_FILE)
+
 .PHONY: coverage-html
 coverage-html: clean test coverage-merge
 	@cd aws && go tool cover -html=../$(COVERAGE_FILE)
