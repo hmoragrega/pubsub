@@ -13,12 +13,12 @@ env:
 
 .PHONY: up
 up:
-	@docker-compose up -d
+	@docker compose up -d
 	@./scripts/wait-for-sqs.sh
 
 .PHONY: down
 down:
-	@docker-compose down
+	@docker compose down
 
 .PHONY: test
 test: up integration
