@@ -14,6 +14,7 @@ type ReceivedMessageStub struct {
 	VersionFunc    func() string
 	AttributesFunc func() pubsub.Attributes
 	AckFunc        func(ctx context.Context) error
+	NAckFunc       func(ctx context.Context) error
 	StringFunc     func() string
 }
 
@@ -38,6 +39,9 @@ func NewNoOpReceivedMessage() *ReceivedMessageStub {
 			return nil
 		},
 		AckFunc: func(ctx context.Context) error {
+			return nil
+		},
+		NAckFunc: func(ctx context.Context) error {
 			return nil
 		},
 		StringFunc: func() string {
@@ -71,6 +75,10 @@ func (m *ReceivedMessageStub) Attributes() pubsub.Attributes {
 }
 
 func (m *ReceivedMessageStub) Ack(ctx context.Context) error {
+	return m.AckFunc(ctx)
+}
+
+func (m *ReceivedMessageStub) NAck(ctx context.Context) error {
 	return m.AckFunc(ctx)
 }
 

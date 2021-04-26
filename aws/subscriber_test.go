@@ -577,8 +577,8 @@ func TestDeadLetterQueue(t *testing.T) {
 		case r := <-msgs:
 			if r.Err != nil {
 				t.Fatal("error receiving message", r.Err)
-
 			}
+			_ = r.Message.NAck(ctx)
 		}
 		attempts--
 	}
@@ -642,9 +642,10 @@ func createTestTopic(ctx context.Context, t *testing.T, topicName string) string
 }
 
 type sqsStub struct {
-	ReceiveMessageFunc     func(ctx context.Context, params *sqs.ReceiveMessageInput, optFns ...func(*sqs.Options)) (*sqs.ReceiveMessageOutput, error)
-	DeleteMessageFunc      func(ctx context.Context, params *sqs.DeleteMessageInput, optFns ...func(*sqs.Options)) (*sqs.DeleteMessageOutput, error)
-	DeleteMessageBatchFunc func(ctx context.Context, params *sqs.DeleteMessageBatchInput, optFns ...func(*sqs.Options)) (*sqs.DeleteMessageBatchOutput, error)
+	ReceiveMessageFunc          func(ctx context.Context, params *sqs.ReceiveMessageInput, optFns ...func(*sqs.Options)) (*sqs.ReceiveMessageOutput, error)
+	DeleteMessageFunc           func(ctx context.Context, params *sqs.DeleteMessageInput, optFns ...func(*sqs.Options)) (*sqs.DeleteMessageOutput, error)
+	DeleteMessageBatchFunc      func(ctx context.Context, params *sqs.DeleteMessageBatchInput, optFns ...func(*sqs.Options)) (*sqs.DeleteMessageBatchOutput, error)
+	ChangeMessageVisibilityFunc func(ctx context.Context, params *sqs.ChangeMessageVisibilityInput, optFns ...func(*sqs.Options)) (*sqs.ChangeMessageVisibilityOutput, error)
 }
 
 func (s *sqsStub) ReceiveMessage(ctx context.Context, params *sqs.ReceiveMessageInput, optFns ...func(*sqs.Options)) (*sqs.ReceiveMessageOutput, error) {
@@ -657,6 +658,10 @@ func (s *sqsStub) DeleteMessageBatch(ctx context.Context, params *sqs.DeleteMess
 
 func (s *sqsStub) DeleteMessage(ctx context.Context, params *sqs.DeleteMessageInput, optFns ...func(*sqs.Options)) (*sqs.DeleteMessageOutput, error) {
 	return s.DeleteMessageFunc(ctx, params, optFns...)
+}
+
+func (s *sqsStub) ChangeMessageVisibility(ctx context.Context, params *sqs.ChangeMessageVisibilityInput, optFns ...func(*sqs.Options)) (*sqs.ChangeMessageVisibilityOutput, error) {
+	return s.ChangeMessageVisibilityFunc(ctx, params, optFns...)
 }
 
 func getEnvOrDefault(key, defaultValue string) string {
