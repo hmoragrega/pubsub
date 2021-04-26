@@ -2,6 +2,7 @@ package aws
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -11,6 +12,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sqs/types"
 	"github.com/hashicorp/go-multierror"
 )
+
+var ErrAsyncNAckNotSupported = errors.New("NAck on async strategy is not supported")
 
 type asyncAck struct {
 	sqs      sqsSvc
@@ -51,6 +54,10 @@ func (s *asyncAck) Ack(_ context.Context, msg *message) error {
 	default:
 		return nil
 	}
+}
+
+func (s *asyncAck) NAck(_ context.Context, _ *message) error {
+	return nil
 }
 
 func (s *asyncAck) run() {

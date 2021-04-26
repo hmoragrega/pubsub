@@ -36,6 +36,7 @@ var _ pubsub.Subscriber = (*Subscriber)(nil)
 
 type ackStrategy interface {
 	Ack(ctx context.Context, msg *message) error
+	NAck(ctx context.Context, msg *message) error
 	Close(ctx context.Context) error
 }
 
@@ -50,7 +51,7 @@ type AckConfig struct {
 	// acknowledge operations finish, reporting any errors.
 	Async bool
 
-	// Batch will indicate to buffer acknowledgements
+	// BatchSize will indicate to buffer acknowledgements
 	// until a certain amount of messages are pending.
 	//
 	// Batching acknowledgements creates
@@ -61,6 +62,11 @@ type AckConfig struct {
 	// When the subscriber closes, it will wait until all
 	// acknowledge operation finish.
 	BatchSize int
+
+	// ChangeVisibilityOnNack when true, the message visibility
+	// will be reset to zero so the message is redelivered again
+	// immediately. It doesn't support batching.
+	ChangeVisibilityOnNack bool
 
 	// FlushEvery indicates how often the messages should be
 	// acknowledged even if the batch is not full yet.
@@ -83,8 +89,16 @@ type Subscriber struct {
 	// Maximum number of messages per batch retrieve. Default 10.
 	maxMessages int
 
-	// Maximum time to wait while poling for new messages. Default 20.
+	// Maximum time to wait while poling for new messages. Default 20s.
 	waitTime *int
+
+	// ackWaitTime indicates how much time the subscriber should wait
+	// for all the messages in the batch to be acknowledged before requesting
+	// a new batch.
+	// Ideally this time should be greater than the message visibility, either
+	// the specific for this subscriber or the queue default.
+	// If not provided 30s will be used.
+	ackWaitTime time.Duration
 
 	// The duration (in seconds) that the received messages are hidden
 	// from subsequent retrieve requests after being retrieved.
@@ -113,8 +127,8 @@ func WithMaxMessages(maxMessages int) func(s *Subscriber) {
 	}
 }
 
-// WithWaitTime configures the number of messages to retrieve per request.
-// If max messages <= 0 or > 10 the default will be used (10 messages).
+// WithWaitTime configures the time to wait during long poling waiting
+// for new messages in the queue until the request is cancelled.
 func WithWaitTime(waitTime int) func(s *Subscriber) {
 	return func(s *Subscriber) {
 		s.waitTime = &waitTime
@@ -128,6 +142,17 @@ func WithWaitTime(waitTime int) func(s *Subscriber) {
 func WithVisibilityTimeout(visibilityTimeout int) func(s *Subscriber) {
 	return func(s *Subscriber) {
 		s.visibilityTimeout = visibilityTimeout
+	}
+}
+
+// WithAckWaitTime indicates how much time the subscriber should wait
+// for all the messages in the batch to be acknowledged before requesting
+// a new batch.
+// Ideally this time should be greater than the message visibility, either
+// the specific for this subscriber or the queue default.
+func WithAckWaitTime(ackWaitTime time.Duration) func(s *Subscriber) {
+	return func(s *Subscriber) {
+		s.ackWaitTime = ackWaitTime
 	}
 }
 
@@ -172,11 +197,17 @@ func (s *Subscriber) Subscribe() (<-chan pubsub.Next, error) {
 	if s.visibilityTimeout > maxVisibilityTimeout {
 		s.visibilityTimeout = maxVisibilityTimeout
 	}
+	if s.ackWaitTime == 0 {
+		s.ackWaitTime = 30 * time.Second
+	}
 
 	if s.ackConfig.Async || s.ackConfig.BatchSize > 0 {
+		if s.ackConfig.ChangeVisibilityOnNack {
+			return nil, ErrAsyncNAckNotSupported
+		}
 		s.ackStrategy = newAsyncAck(s.sqs, s.queueURL, s.ackConfig)
 	} else {
-		s.ackStrategy = newSyncAck(s.sqs, s.queueURL)
+		s.ackStrategy = newSyncAck(s.sqs, s.queueURL, s.ackConfig.ChangeVisibilityOnNack)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -226,6 +257,11 @@ func (s *Subscriber) consume(ctx context.Context) {
 		MessageAttributeNames: allAttributes,
 	}
 
+	t := time.NewTimer(s.ackWaitTime)
+	defer func() {
+		t.Stop()
+	}()
+
 	for {
 		out, err := s.sqs.ReceiveMessage(ctx, in)
 		if err != nil {
@@ -237,7 +273,14 @@ func (s *Subscriber) consume(ctx context.Context) {
 			}
 		}
 
-		messages, err := s.wrapMessages(out.Messages)
+		pending := len(out.Messages)
+		if pending == 0 {
+			continue
+		}
+
+		ackNotifications := make(chan struct{}, pending)
+
+		messages, err := s.wrapMessages(out.Messages, ackNotifications)
 		if err != nil {
 			select {
 			case <-ctx.Done():
@@ -255,10 +298,22 @@ func (s *Subscriber) consume(ctx context.Context) {
 				continue
 			}
 		}
+
+		t.Reset(s.ackWaitTime)
+		for pending > 0 {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				continue
+			case <-ackNotifications:
+				pending--
+			}
+		}
 	}
 }
 
-func (s *Subscriber) wrapMessages(in []types.Message) (out []pubsub.ReceivedMessage, err error) {
+func (s *Subscriber) wrapMessages(in []types.Message, ackNotifications chan<- struct{}) (out []pubsub.ReceivedMessage, err error) {
 	out = make([]pubsub.ReceivedMessage, len(in))
 	for i, m := range in {
 		var awsMsgID string
@@ -294,6 +349,7 @@ func (s *Subscriber) wrapMessages(in []types.Message) (out []pubsub.ReceivedMess
 			attributes:       decodeCustomAttributes(m.MessageAttributes),
 			sqsMessageID:     m.MessageId,
 			sqsReceiptHandle: m.ReceiptHandle,
+			ackNotifications: ackNotifications,
 			subscriber:       s,
 		}
 	}
@@ -313,6 +369,19 @@ func (s *Subscriber) ack(_ context.Context, msg *message) error {
 	return nil
 }
 
+func (s *Subscriber) nack(_ context.Context, msg *message) error {
+	if !s.isRunning() {
+		return fmt.Errorf("%w", ErrSubscriberStopped)
+	}
+
+	err := s.ackStrategy.NAck(context.Background(), msg)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrAcknowledgement, err)
+	}
+
+	return nil
+}
+
 func (s *Subscriber) isRunning() bool {
 	s.statusMx.RLock()
 	defer s.statusMx.RUnlock()
@@ -324,4 +393,5 @@ type sqsSvc interface {
 	ReceiveMessage(ctx context.Context, params *sqs.ReceiveMessageInput, optFns ...func(*sqs.Options)) (*sqs.ReceiveMessageOutput, error)
 	DeleteMessage(ctx context.Context, params *sqs.DeleteMessageInput, optFns ...func(*sqs.Options)) (*sqs.DeleteMessageOutput, error)
 	DeleteMessageBatch(ctx context.Context, params *sqs.DeleteMessageBatchInput, optFns ...func(*sqs.Options)) (*sqs.DeleteMessageBatchOutput, error)
+	ChangeMessageVisibility(ctx context.Context, params *sqs.ChangeMessageVisibilityInput, optFns ...func(*sqs.Options)) (*sqs.ChangeMessageVisibilityOutput, error)
 }

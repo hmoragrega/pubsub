@@ -34,11 +34,14 @@ type ReceivedMessage interface {
 	// Version of the envelope.
 	Version() string
 
-	// Message attributes.
+	// Attributes message attributes.
 	Attributes() Attributes
 
 	// Ack acknowledges the message.
 	Ack(ctx context.Context) error
+
+	// NAck negative acknowledges the message.
+	NAck(ctx context.Context) error
 
 	// String prints the message.
 	String() string

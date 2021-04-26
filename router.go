@@ -23,6 +23,14 @@ const (
 	stopped
 )
 
+type Acknowledgement uint8
+
+const (
+	NoOp Acknowledgement = iota
+	Ack
+	NAck
+)
+
 // Consumer consumes messages from a single subscription.
 type consumer struct {
 	subscriber Subscriber
@@ -31,7 +39,7 @@ type consumer struct {
 	next       <-chan Next
 }
 
-// Checkpoint: optional hooks executed during the message live cycle
+// Checkpoint optional hooks executed during the message live cycle
 //
 // Returning an error will stop the subscription, and trigger the shutdown
 // of the router.
@@ -39,8 +47,8 @@ type Checkpoint func(ctx context.Context, topic string, msg ReceivedMessage, err
 
 // DisableAutoAck is acknowledgement decider function that disables the router from
 // auto-acknowledging messages.
-func DisableAutoAck(ctx context.Context, topic string, msg ReceivedMessage, err error) bool {
-	return false
+func DisableAutoAck(ctx context.Context, topic string, msg ReceivedMessage, err error) Acknowledgement {
+	return NoOp
 }
 
 // Router groups consumers and runs them together.
@@ -50,11 +58,11 @@ type Router struct {
 	Unmarshaller Unmarshaller
 
 	// AckDecider is an optional method that will decide if the message should
-	// be acknowledged or not; it receives the topic, the message and the result of
-	// the handler.
-	// By default, the message will be acknowledged if there was no error handling it.
+	// be acknowledged, negative acknowledged or do nothing; it receives the topic,
+	// By default, the message will be acknowledged if there was no error handling it
+	// and negatively acknowledged if there was.
 	// To disable the automatic acknowledgements pass the DisableAutoAck function
-	AckDecider func(ctx context.Context, topic string, msg ReceivedMessage, err error) bool
+	AckDecider func(ctx context.Context, topic string, msg ReceivedMessage, err error) Acknowledgement
 
 	// StopTimeout time to wait for all the consumer to stop in a
 	// clean way. No timeout by default.
@@ -81,6 +89,10 @@ type Router struct {
 	// Optional callback invoked when the handled
 	// message cannot be acknowledged
 	OnAck Checkpoint
+
+	// Optional callback invoked when the handled
+	// message cannot be negatively acknowledged
+	OnNAck Checkpoint
 
 	consumers map[string]*consumer
 	status    status
@@ -253,10 +265,15 @@ func (r *Router) consume(ctx context.Context, c *consumer) error {
 		if err := r.check(ctx, r.OnHandler, c, msg, err); err != nil {
 			return err
 		}
-		if !r.shouldAck(ctx, c, msg, err) {
+
+		switch r.ack(ctx, c, msg, err) {
+		case Ack:
+			err = msg.Ack(ctx)
+		case NAck:
+			err = msg.NAck(ctx)
+		case NoOp:
 			continue
 		}
-		err = msg.Ack(ctx)
 		if err := r.check(ctx, r.OnAck, c, msg, err); err != nil {
 			return err
 		}
@@ -302,9 +319,13 @@ func (r *Router) messageContext(ctx context.Context, msg ReceivedMessage) contex
 	return r.MessageContext(ctx, msg)
 }
 
-func (r *Router) shouldAck(ctx context.Context, c *consumer, msg ReceivedMessage, err error) bool {
+func (r *Router) ack(ctx context.Context, c *consumer, msg ReceivedMessage, err error) Acknowledgement {
 	if r.AckDecider == nil {
-		return err == nil
+		if err != nil {
+			return NAck
+		}
+		return Ack
 	}
+
 	return r.AckDecider(ctx, c.topic, msg, err)
 }
