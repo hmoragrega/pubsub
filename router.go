@@ -90,10 +90,6 @@ type Router struct {
 	// message cannot be acknowledged
 	OnAck Checkpoint
 
-	// Optional callback invoked when the handled
-	// message cannot be negatively acknowledged
-	OnNAck Checkpoint
-
 	consumers map[string]*consumer
 	status    status
 	mx        sync.RWMutex
