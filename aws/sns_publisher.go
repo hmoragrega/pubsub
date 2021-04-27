@@ -14,22 +14,22 @@ import (
 
 var ErrTopicNotFound = errors.New("could not find topic ARN")
 
-// Publisher SNS publisher.
-type Publisher struct {
+// SNSPublisher SNS publisher.
+type SNSPublisher struct {
 	sns       *sns.Client
 	topicARNs map[string]string
 }
 
 // NewSNSPublisher creates a new SNS publisher.
-func NewSNSPublisher(sns *sns.Client, topicARNs map[string]string) *Publisher {
-	return &Publisher{
+func NewSNSPublisher(sns *sns.Client, topicARNs map[string]string) *SNSPublisher {
+	return &SNSPublisher{
 		sns:       sns,
 		topicARNs: topicARNs,
 	}
 }
 
 // Publish a message trough SNS.
-func (p *Publisher) Publish(ctx context.Context, topic string, envelopes ...*pubsub.Envelope) error {
+func (p *SNSPublisher) Publish(ctx context.Context, topic string, envelopes ...*pubsub.Envelope) error {
 	var topicARN string
 
 	switch pos := strings.Index(strings.ToLower(topic), "arn:aws:sns"); pos {
@@ -54,7 +54,7 @@ func (p *Publisher) Publish(ctx context.Context, topic string, envelopes ...*pub
 		_, err := p.sns.Publish(ctx, &sns.PublishInput{
 			TopicArn:          &topicARN,
 			Message:           stringPtr(env.Body),
-			MessageAttributes: encodeAttributes(env),
+			MessageAttributes: encodeSNSAttributes(env),
 			//MessageDeduplicationId: &base64ID, // @TODO FIFO only
 			//MessageGroupId:         &key,      // @TODO FIFO only
 		})
