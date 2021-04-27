@@ -90,13 +90,19 @@ func TestPublisher_Wrapper(t *testing.T) {
 			if e.Attributes[attributeKey] != injectedValue {
 				t.Fatalf("message does not have the injected attribute; got %+v", e.Attributes)
 			}
+			if e.Name != topic {
+				t.Fatalf("topic should be used as event name; got %+v", e.Name)
+			}
 		}
 		return nil
 	})
 
-	p := pubsub.WrapPublisher(innerPublisher, pubsub.CtxAttributeInjector(attributeKey, func(ctx context.Context) string {
-		return ctx.Value(ctxKey).(string)
-	}))
+	p := pubsub.WrapPublisher(innerPublisher,
+		pubsub.TopicAsEventName(),
+		pubsub.CtxAttributeInjector(attributeKey, func(ctx context.Context) string {
+			return ctx.Value(ctxKey).(string)
+		}),
+	)
 
 	ctx := context.WithValue(context.Background(), ctxKey, injectedValue)
 	err := p.Publish(ctx, "foo-topic", &pubsub.Message{})

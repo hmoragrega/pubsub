@@ -135,6 +135,22 @@ func CtxAttributeInjector(attributeName string, extract CtxExtractorFunc) Publis
 	}
 }
 
+// TopicAsEventName is a publisher middleware that will set the event name as the topic
+// if the event name is empty.
+func TopicAsEventName() PublisherMiddleware {
+	return func(publisher Publisher) Publisher {
+		return PublisherFunc(func(ctx context.Context, topic string, envelopes ...*Message) error {
+			for _, env := range envelopes {
+				if env.Name == "" {
+					env.Name = topic
+				}
+			}
+
+			return publisher.Publish(ctx, topic, envelopes...)
+		})
+	}
+}
+
 // WrapPublisher will wrap the publisher in the given middlewares.
 func WrapPublisher(publisher Publisher, middlewares ...PublisherMiddleware) Publisher {
 	return PublisherFunc(func(ctx context.Context, topic string, envelopes ...*Message) error {
