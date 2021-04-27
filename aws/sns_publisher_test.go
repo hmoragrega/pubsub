@@ -10,9 +10,9 @@ import (
 	"github.com/hmoragrega/pubsub"
 )
 
-func TestPublisher_PublishFailures(t *testing.T) {
+func TestSNSPublisher_PublishFailures(t *testing.T) {
 	t.Run("topic not found", func(t *testing.T) {
-		var pub Publisher
+		var pub SNSPublisher
 		err := pub.Publish(context.Background(), "foo", &pubsub.Envelope{})
 		if !errors.Is(err, ErrTopicNotFound) {
 			t.Fatalf("expected error %v; got %v", ErrTopicNotFound, err)
@@ -20,7 +20,7 @@ func TestPublisher_PublishFailures(t *testing.T) {
 	})
 
 	t.Run("publish failure", func(t *testing.T) {
-		pub := Publisher{
+		pub := SNSPublisher{
 			sns: badSNS(),
 			topicARNs: map[string]string{
 				"foo": "arn-foo",
@@ -34,7 +34,7 @@ func TestPublisher_PublishFailures(t *testing.T) {
 			Version: "test",
 		})
 		if err == nil {
-			t.Fatal("expected error publishing to SQS")
+			t.Fatal("expected error publishing to SNS")
 		}
 	})
 }

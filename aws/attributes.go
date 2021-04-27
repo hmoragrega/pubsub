@@ -16,37 +16,49 @@ const (
 	customAttributePrefix = "x-"
 )
 
-func encodeAttributes(env *pubsub.Envelope) map[string]snstypes.MessageAttributeValue {
-	attributes := map[string]snstypes.MessageAttributeValue{
-		idAttributeKey: {
-			DataType:    stringDataType,
-			StringValue: &env.ID,
-		},
-		versionAttributeKey: {
-			DataType:    stringDataType,
-			StringValue: &env.Version,
-		},
-	}
-	if env.Name != "" {
-		attributes[nameAttributeKey] = snstypes.MessageAttributeValue{
-			DataType:    stringDataType,
-			StringValue: &env.Name,
-		}
-	}
-	if env.Key != "" {
-		attributes[keyAttributeKey] = snstypes.MessageAttributeValue{
-			DataType:    stringDataType,
-			StringValue: &env.Key,
-		}
-	}
-	for k, v := range env.Attributes {
+func encodeSQSAttributes(env *pubsub.Envelope) map[string]sqstypes.MessageAttributeValue {
+	rawAttributes := encodeAttributes(env)
+	sqsAttributes := make(map[string]sqstypes.MessageAttributeValue, len(rawAttributes))
+	for k, v := range rawAttributes {
 		v := v
-		k := customAttributePrefix + k
-		attributes[k] = snstypes.MessageAttributeValue{
+		sqsAttributes[k] = sqstypes.MessageAttributeValue{
 			DataType:    stringDataType,
 			StringValue: &v,
 		}
 	}
+
+	return sqsAttributes
+}
+
+func encodeSNSAttributes(env *pubsub.Envelope) map[string]snstypes.MessageAttributeValue {
+	rawAttributes := encodeAttributes(env)
+	snsAttributes := make(map[string]snstypes.MessageAttributeValue, len(rawAttributes))
+	for k, v := range rawAttributes {
+		v := v
+		snsAttributes[k] = snstypes.MessageAttributeValue{
+			DataType:    stringDataType,
+			StringValue: &v,
+		}
+	}
+
+	return snsAttributes
+}
+
+func encodeAttributes(env *pubsub.Envelope) map[string]string {
+	attributes := map[string]string{
+		idAttributeKey:      env.ID,
+		versionAttributeKey: env.Version,
+	}
+	if env.Name != "" {
+		attributes[nameAttributeKey] = env.Name
+	}
+	if env.Key != "" {
+		attributes[keyAttributeKey] = env.Key
+	}
+	for k, v := range env.Attributes {
+		attributes[customAttributePrefix+k] = v
+	}
+
 	return attributes
 }
 
