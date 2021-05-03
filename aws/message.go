@@ -3,7 +3,7 @@ package aws
 import (
 	"context"
 	"fmt"
-	"sync/atomic"
+	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 )
@@ -19,7 +19,9 @@ type message struct {
 	attributes map[string]string
 
 	ackNotifications chan<- struct{}
-	acknowledged     int32
+	ackOnce          sync.Once
+	ackResult        error
+
 	subscriber       *Subscriber
 	sqsMessageID     *string
 	sqsReceiptHandle *string
@@ -50,19 +52,21 @@ func (m *message) Attributes() map[string]string {
 }
 
 func (m *message) Ack(ctx context.Context) error {
-	if atomic.SwapInt32(&m.acknowledged, 1) == 0 {
+	m.ackOnce.Do(func() {
 		m.ackNotifications <- struct{}{}
-		return m.subscriber.ack(ctx, m)
-	}
-	return nil
+		m.ackResult = m.subscriber.ack(ctx, m)
+	})
+
+	return m.ackResult
 }
 
 func (m *message) NAck(ctx context.Context) error {
-	if atomic.SwapInt32(&m.acknowledged, 1) == 0 {
+	m.ackOnce.Do(func() {
 		m.ackNotifications <- struct{}{}
-		return m.subscriber.nack(ctx, m)
-	}
-	return nil
+		m.ackResult = m.subscriber.nack(ctx, m)
+	})
+
+	return m.ackResult
 }
 
 func (m *message) String() string {
