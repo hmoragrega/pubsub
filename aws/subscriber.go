@@ -22,6 +22,7 @@ const (
 var (
 	ErrSubscriberStopped = errors.New("subscriber stopped")
 	ErrAcknowledgement   = errors.New("cannot ack message")
+	ErrNAcknowledgement  = errors.New("cannot nack message")
 	ErrAlreadyStarted    = errors.New("already started")
 	ErrAlreadyStopped    = errors.New("already stopped")
 	ErrMissingConfig     = errors.New("missing configuration")
@@ -376,7 +377,7 @@ func (s *Subscriber) nack(_ context.Context, msg *message) error {
 
 	err := s.ackStrategy.NAck(context.Background(), msg)
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrAcknowledgement, err)
+		return fmt.Errorf("%w: %v", ErrNAcknowledgement, err)
 	}
 
 	return nil
