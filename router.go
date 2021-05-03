@@ -239,30 +239,31 @@ func (r *Router) consume(ctx context.Context, c *consumer) error {
 		case next = <-c.next:
 		}
 
-		msg, err := next.Message, next.Err
-		ctx := r.messageContext(ctx, msg)
+		rmsg, err := next.Message, next.Err
+		ctx := r.messageContext(ctx, rmsg)
 
-		if err := r.check(ctx, r.OnReceive, c, msg, err); err != nil {
+		if err := r.check(ctx, r.OnReceive, c, rmsg, err); err != nil {
 			return err
 		}
 		if err != nil {
 			continue
 		}
 
-		data, err := r.Unmarshaller.Unmarshal(c.topic, msg)
-		if err := r.check(ctx, r.OnUnmarshal, c, msg, err); err != nil {
+		data, err := r.Unmarshaller.Unmarshal(c.topic, rmsg)
+		if err := r.check(ctx, r.OnUnmarshal, c, rmsg, err); err != nil {
 			return err
 		}
 		if err != nil {
 			continue
 		}
 
-		err = c.handler.HandleMessage(ctx, NewMessageFromReceived(msg, data))
-		if err := r.check(ctx, r.OnHandler, c, msg, err); err != nil {
+		msg := NewMessageFromReceived(rmsg, data)
+		err = c.handler.HandleMessage(ctx, msg)
+		if err := r.check(ctx, r.OnHandler, c, rmsg, err); err != nil {
 			return err
 		}
 
-		switch r.ack(ctx, c, msg, err) {
+		switch r.ack(ctx, c, rmsg, err) {
 		case Ack:
 			err = msg.Ack(ctx)
 		case NAck:
@@ -270,7 +271,7 @@ func (r *Router) consume(ctx context.Context, c *consumer) error {
 		case NoOp:
 			continue
 		}
-		if err := r.check(ctx, r.OnAck, c, msg, err); err != nil {
+		if err := r.check(ctx, r.OnAck, c, rmsg, err); err != nil {
 			return err
 		}
 	}

@@ -66,6 +66,9 @@ type Message struct {
 
 	received ReceivedMessage
 	mx       sync.RWMutex
+
+	ackOnce   sync.Once
+	ackResult error
 }
 
 // NewMessageFromReceived builds a new message from a received one and
@@ -83,14 +86,29 @@ func NewMessageFromReceived(msg ReceivedMessage, data interface{}) *Message {
 
 // Ack acknowledges the message.
 func (m *Message) Ack(ctx context.Context) error {
-	m.mx.RLock()
-	defer m.mx.RUnlock()
+	m.ackOnce.Do(func() {
+		if m.received == nil {
+			m.ackResult = ErrReceivedMessageNotAvailable
+			return
+		}
 
-	if m.received == nil {
-		return ErrReceivedMessageNotAvailable
-	}
+		m.ackResult = m.received.Ack(ctx)
+	})
 
-	return m.received.Ack(ctx)
+	return m.ackResult
+}
+
+func (m *Message) NAck(ctx context.Context) error {
+	m.ackOnce.Do(func() {
+		if m.received == nil {
+			m.ackResult = ErrReceivedMessageNotAvailable
+			return
+		}
+
+		m.ackResult = m.received.NAck(ctx)
+	})
+
+	return m.ackResult
 }
 
 // SetAttribute sets an attribute.
