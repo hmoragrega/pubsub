@@ -48,6 +48,18 @@ func Recoverer(next Handler) Handler {
 	})
 }
 
+// Acknowledge will acknowledge a message and pass it to the next handler.
+func Acknowledge(next Handler) Handler {
+	return HandlerFunc(func(ctx context.Context, message *Message) (err error) {
+		if message != nil {
+			// Ack result is available downstream.
+			_ = message.Ack(ctx)
+		}
+
+		return next.HandleMessage(ctx, message)
+	})
+}
+
 // WrapHandler will wrap the handler in the given middlewares.
 func WrapHandler(handler Handler, middlewares ...func(Handler) Handler) Handler {
 	for _, mw := range middlewares {

@@ -153,7 +153,8 @@ func TestLetterbox_RequestFailures(t *testing.T) {
 		}
 	})
 	t.Run("duplicated request ID", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
 
 		letterbox.Publisher = pubsub.PublisherFunc(func(_ context.Context, _ string, _ ...*pubsub.Message) error {
 			return nil
@@ -179,7 +180,6 @@ func TestLetterbox_RequestFailures(t *testing.T) {
 		if _, ok := letterbox.pop("123"); !ok {
 			t.Fatal("the first message should be there")
 		}
-		cancel()
 	})
 	t.Run("timeout ", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
@@ -242,6 +242,30 @@ func TestLetterbox_ResponseFailures(t *testing.T) {
 			},
 		}, &pubsub.Message{}); err == nil {
 			t.Fatal("expected error, got", err)
+		}
+	})
+	t.Run("deadline format error", func(t *testing.T) {
+		if err := letterbox.Response(ctx, &pubsub.Message{
+			Attributes: map[string]string{
+				responseTopicAttribute: "foo-topic",
+				requestIDAttribute:     "123",
+				requestedAtAttribute:   time.Now().Format(time.RFC3339Nano),
+				deadlineAttribute:      "not valid",
+			},
+		}, &pubsub.Message{}); err == nil {
+			t.Fatal("expected error, got", err)
+		}
+	})
+	t.Run("deadline exceeded", func(t *testing.T) {
+		if err := letterbox.Response(ctx, &pubsub.Message{
+			Attributes: map[string]string{
+				responseTopicAttribute: "foo-topic",
+				requestIDAttribute:     "123",
+				requestedAtAttribute:   time.Now().Add(-2 * time.Second).Format(time.RFC3339Nano),
+				deadlineAttribute:      time.Now().Add(-1 * time.Second).Format(time.RFC3339Nano),
+			},
+		}, &pubsub.Message{}); err != nil {
+			t.Fatal("expected nil error (no-op), got", err)
 		}
 	})
 	t.Run("publisher error", func(t *testing.T) {

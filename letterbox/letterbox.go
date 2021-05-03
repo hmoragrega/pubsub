@@ -14,6 +14,7 @@ const (
 	responseTopicAttribute = "letterbox-response-topic"
 	requestIDAttribute     = "letterbox-request-id"
 	requestedAtAttribute   = "letterbox-requested-at"
+	deadlineAttribute      = "letterbox-deadline"
 )
 
 var ErrRequestAlreadySent = errors.New("request already sent")
@@ -71,6 +72,11 @@ func (x *Letterbox) Request(ctx context.Context, topic string, request *pubsub.M
 	request.SetAttribute(requestIDAttribute, requestID)
 	request.SetAttribute(requestedAtAttribute, time.Now().Format(time.RFC3339Nano))
 
+	deadline, ok := ctx.Deadline()
+	if ok {
+		request.SetAttribute(deadlineAttribute, deadline.Format(time.RFC3339Nano))
+	}
+
 	c, err := x.waitFor(requestID, request)
 	if err != nil {
 		return nil, err
@@ -122,6 +128,16 @@ func (x *Letterbox) Response(ctx context.Context, request, response *pubsub.Mess
 	requestedAt, ok := request.Attributes[requestedAtAttribute]
 	if !ok {
 		return fmt.Errorf("missing request time")
+	}
+	deadlineAttr, ok := request.Attributes[deadlineAttribute]
+	if ok {
+		deadline, err := time.Parse(time.RFC3339Nano, deadlineAttr)
+		if err != nil {
+			return fmt.Errorf("cannot parse deadline")
+		}
+		if deadline.Sub(time.Now()) <= 0 {
+			return nil
+		}
 	}
 
 	response.SetAttribute(requestIDAttribute, requestID)
