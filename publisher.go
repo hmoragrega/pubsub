@@ -153,10 +153,10 @@ func TopicAsEventName() PublisherMiddleware {
 
 // WrapPublisher will wrap the publisher in the given middlewares.
 func WrapPublisher(publisher Publisher, middlewares ...PublisherMiddleware) Publisher {
+	for _, mw := range middlewares {
+		publisher = mw(publisher)
+	}
 	return PublisherFunc(func(ctx context.Context, topic string, envelopes ...*Message) error {
-		for _, mw := range middlewares {
-			publisher = mw(publisher)
-		}
 		return publisher.Publish(ctx, topic, envelopes...)
 	})
 }
