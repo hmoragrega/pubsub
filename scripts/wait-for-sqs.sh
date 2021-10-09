@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 i=0
-timeout=20
+timeout=$1
 
 while :
 do
