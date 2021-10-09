@@ -30,6 +30,9 @@ jobs:
         run: |
           go mod download
 
+      - name: Infra up
+        run: make up
+
       - name: Test
         run: make coverage-ci
 

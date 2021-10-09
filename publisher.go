@@ -63,24 +63,9 @@ func NewPublisher(publisher EnvelopePublisher, marshaller Marshaller) *Marshalle
 
 // Publish a message to the given topic.
 func (p *MarshallerPublisher) Publish(ctx context.Context, topic string, messages ...*Message) error {
-	envelopes := make([]*Envelope, len(messages))
-	for i, m := range messages {
-		body, version, err := p.marshaller.Marshal(m.Data)
-		if err != nil {
-			return fmt.Errorf("marshaller error (%d): %w", i, err)
-		}
-		id := m.ID
-		if len(m.ID) == 0 {
-			id = NewID()
-		}
-		envelopes[i] = &Envelope{
-			ID:         id,
-			Name:       m.Name,
-			Key:        m.Key,
-			Attributes: m.Attributes,
-			Body:       body,
-			Version:    version,
-		}
+	envelopes, err := marshallMessages(p.marshaller, messages...)
+	if err != nil {
+		return err
 	}
 
 	return p.publisher.Publish(ctx, topic, envelopes...)
@@ -159,4 +144,27 @@ func WrapPublisher(publisher Publisher, middlewares ...PublisherMiddleware) Publ
 	return PublisherFunc(func(ctx context.Context, topic string, envelopes ...*Message) error {
 		return publisher.Publish(ctx, topic, envelopes...)
 	})
+}
+
+func marshallMessages(marshaller Marshaller, messages ...*Message) ([]*Envelope, error) {
+	envelopes := make([]*Envelope, len(messages))
+	for i, m := range messages {
+		body, version, err := marshaller.Marshal(m.Data)
+		if err != nil {
+			return nil, fmt.Errorf("marshaller error (%d): %w", i, err)
+		}
+		id := m.ID
+		if len(m.ID) == 0 {
+			id = NewID()
+		}
+		envelopes[i] = &Envelope{
+			ID:         id,
+			Name:       m.Name,
+			Key:        m.Key,
+			Attributes: m.Attributes,
+			Body:       body,
+			Version:    version,
+		}
+	}
+	return envelopes, nil
 }
