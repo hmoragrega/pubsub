@@ -253,7 +253,6 @@ CREATE TABLE IF NOT EXISTS scheduled (
     topic TEXT NOT NULL,
     message BYTEA NOT NULL,
     instance_id TEXT DEFAULT NULL, 
-    instance_batch BIGINT DEFAULT 0, 
     instance_timeout TIMESTAMP WITH TIME ZONE DEFAULT NULL,
 
     CONSTRAINT message_id_idx UNIQUE (message_id)
