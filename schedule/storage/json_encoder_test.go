@@ -1,8 +1,10 @@
 package storage
 
 import (
-	"github.com/hmoragrega/pubsub"
+	"strings"
 	"testing"
+
+	"github.com/hmoragrega/pubsub"
 )
 
 func TestJSONEnvelopeEncoder(t *testing.T) {
@@ -14,7 +16,7 @@ func TestJSONEnvelopeEncoder(t *testing.T) {
 			t.Fatal("unexpected error", err)
 		}
 		want := `{"ID":"1","Name":"","Key":"","Body":null,"Version":"","Attributes":null}`
-		if got := string(raw); got != want {
+		if got := strings.TrimSpace(string(raw)); got != want {
 			t.Fatalf("unexpected encoding; want %s, got %s", want, got)
 		}
 	})

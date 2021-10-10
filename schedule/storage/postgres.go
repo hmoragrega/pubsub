@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/hmoragrega/pubsub"
@@ -24,8 +23,10 @@ type encoder interface {
 }
 
 type Options struct {
-	// MinWaitTime minimum wait time between that each worker will wait before processing the next batch of due messages.
+	// MinWaitTime minimum wait time between that will wait before processing the next batch of due messages.
 	// If the batch took more to be processed, the next one will be processed immediately.
+	// On mostly empty tables a longer time will prevent hitting the DB constantly
+	// at the cost of losing some precision in the due date.
 	// Default: 500ms.
 	MinWaitTime time.Duration
 
@@ -33,13 +34,13 @@ type Options struct {
 	// Default: 100.
 	BatchSize int
 
-	// InstanceTimeout specifies the time that a message will be locked for publishing after has been selected for this
-	// instance. After this time, the message will be available for being picked up again.
-	// A reasonable value will allow to safely publish all the messages in the batch.
+	// InstanceTimeout specifies the time that a message will be locked for publishing after
+	// has been selected for this instance. After this time, the message will be available again.
+	// A reasonable value should allow you app to publish all the messages in the batch.
 	// Default: 1 minute.
 	InstanceTimeout time.Duration
 
-	// Encoder can be used to customize the encoding:
+	// Encoder can be used to customize how to encode the messages for storing.
 	// Default: JSON encoder
 	Encoder encoder
 }
@@ -51,8 +52,6 @@ type Postgres struct {
 	exec       executor
 	opts       Options
 	encoder    encoder
-
-	batch uint32
 
 	insertQuery string
 	selectQuery string
@@ -153,10 +152,7 @@ func (s *Postgres) Published(ctx context.Context, message pubsub.DueMessage) err
 }
 
 func (s *Postgres) listNext(ctx context.Context) (messages []pubsub.DueMessage, err error) {
-	// increment the batch, overflows is expected to restart the cycle.
-	batchID := atomic.AddUint32(&s.batch, 1)
-
-	rows, err := s.exec.QueryContext(ctx, s.selectQuery, s.instanceID, batchID)
+	rows, err := s.exec.QueryContext(ctx, s.selectQuery, s.instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("cannot select due messages: %w", err)
 	}
@@ -234,7 +230,6 @@ WITH updated AS (
 	UPDATE %s
 	SET
 		instance_id = $1,
-		instance_batch = $2,
 		instance_timeout = NOW() + interval 'seconds %d'
 	WHERE message_id IN (
 		SELECT message_id
