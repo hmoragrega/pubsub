@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/hmoragrega/pubsub"
+	"github.com/hmoragrega/pubsub/internal/stubs"
 	"github.com/hmoragrega/pubsub/marshaller"
 )
 
@@ -19,14 +20,14 @@ func TestPublisher(t *testing.T) {
 
 	t.Run("stores the message when schedule", func(t *testing.T) {
 		var (
-			m     storageMock
+			m     stubs.StorageStub
 			now   = time.Now()
 			delay = time.Second
 			topic = "foo"
 			msg   = &pubsub.Message{Data: "data"}
 		)
 
-		m.scheduleFunc = func(ctx context.Context, dueDate time.Time, gotTopic string, envelopes ...*pubsub.Envelope) error {
+		m.ScheduleFunc = func(ctx context.Context, dueDate time.Time, gotTopic string, envelopes ...*pubsub.Envelope) error {
 			expected := now.Add(delay)
 			if !dueDate.Equal(expected) && !dueDate.After(expected) {
 				return fmt.Errorf("due date is not in range: expected %v; got %v", expected, dueDate)
@@ -43,7 +44,7 @@ func TestPublisher(t *testing.T) {
 			return nil
 		}
 
-		p := pubsub.NewSchedulerPublisher(noOpMarshallerPublisher, &m)
+		p := pubsub.NewSchedulerPublisher(noOpMarshallerPublisher, m)
 
 		err := p.Delay(ctx, time.Second, "foo", msg)
 		if err != nil {
@@ -53,11 +54,11 @@ func TestPublisher(t *testing.T) {
 
 	t.Run("returns marshaling failures when scheduling messages", func(t *testing.T) {
 		var (
-			m   storageMock
+			m   stubs.StorageStub
 			msg = &pubsub.Message{Data: 123} // invalid data
 		)
 
-		p := pubsub.NewSchedulerPublisher(noOpMarshallerPublisher, &m)
+		p := pubsub.NewSchedulerPublisher(noOpMarshallerPublisher, m)
 
 		err := p.Schedule(ctx, time.Now(), "foo", msg)
 		if err == nil || !strings.Contains(err.Error(), "invalid data type; expected string or byte slice, got int") {
@@ -67,7 +68,7 @@ func TestPublisher(t *testing.T) {
 
 	t.Run("publishes due messages", func(t *testing.T) {
 		var (
-			m     storageMock
+			m     stubs.StorageStub
 			msg   = &pubsub.Envelope{Body: []byte("bar")}
 			topic = "foo"
 			feed  = make(chan pubsub.DueMessage, 1)
@@ -75,10 +76,10 @@ func TestPublisher(t *testing.T) {
 
 		feed <- pubsub.DueMessage{Topic: topic, Envelope: msg}
 
-		m.consumeDueFunc = func(ctx context.Context) (<-chan pubsub.DueMessage, error) {
+		m.ConsumeDueFunc = func(ctx context.Context) (<-chan pubsub.DueMessage, error) {
 			return feed, nil
 		}
-		m.publishedFunc = func(ctx context.Context, got pubsub.DueMessage) error {
+		m.PublishedFunc = func(ctx context.Context, got pubsub.DueMessage) error {
 			if got.Envelope != msg {
 				return fmt.Errorf("unexpected message: expected %v; got %v", msg, got.Envelope)
 			}
@@ -86,7 +87,7 @@ func TestPublisher(t *testing.T) {
 			return nil
 		}
 
-		p := pubsub.NewSchedulerPublisher(noOpMarshallerPublisher, &m)
+		p := pubsub.NewSchedulerPublisher(noOpMarshallerPublisher, m)
 
 		err := p.PublishDue(ctx)
 		if err != nil {
@@ -95,12 +96,12 @@ func TestPublisher(t *testing.T) {
 	})
 
 	t.Run("returns an error if cannot consume due messages", func(t *testing.T) {
-		var m storageMock
-		m.consumeDueFunc = func(ctx context.Context) (<-chan pubsub.DueMessage, error) {
+		var m stubs.StorageStub
+		m.ConsumeDueFunc = func(ctx context.Context) (<-chan pubsub.DueMessage, error) {
 			return nil, fmt.Errorf("dummy")
 		}
 
-		p := pubsub.NewSchedulerPublisher(noOpMarshallerPublisher, &m)
+		p := pubsub.NewSchedulerPublisher(noOpMarshallerPublisher, m)
 
 		err := p.PublishDue(ctx)
 		if err == nil || !strings.Contains(err.Error(), "dummy") {
@@ -110,17 +111,17 @@ func TestPublisher(t *testing.T) {
 
 	t.Run("stops if the consumer returns an error", func(t *testing.T) {
 		var (
-			m    storageMock
+			m    stubs.StorageStub
 			feed = make(chan pubsub.DueMessage, 1)
 		)
 
 		feed <- pubsub.DueMessage{Err: errorDummy}
 
-		m.consumeDueFunc = func(ctx context.Context) (<-chan pubsub.DueMessage, error) {
+		m.ConsumeDueFunc = func(ctx context.Context) (<-chan pubsub.DueMessage, error) {
 			return feed, nil
 		}
 
-		p := pubsub.NewSchedulerPublisher(noOpMarshallerPublisher, &m)
+		p := pubsub.NewSchedulerPublisher(noOpMarshallerPublisher, m)
 
 		err := p.PublishDue(ctx)
 		if !errors.Is(err, errorDummy) {
@@ -130,13 +131,13 @@ func TestPublisher(t *testing.T) {
 
 	t.Run("stops if the publisher returns an error", func(t *testing.T) {
 		var (
-			m    storageMock
+			m    stubs.StorageStub
 			feed = make(chan pubsub.DueMessage, 1)
 		)
 
 		feed <- pubsub.DueMessage{Topic: "foo", Envelope: &pubsub.Envelope{}}
 
-		m.consumeDueFunc = func(ctx context.Context) (<-chan pubsub.DueMessage, error) {
+		m.ConsumeDueFunc = func(ctx context.Context) (<-chan pubsub.DueMessage, error) {
 			return feed, nil
 		}
 
@@ -144,7 +145,7 @@ func TestPublisher(t *testing.T) {
 			return errorDummy
 		}), &marshaller.ByteMarshaller{})
 
-		p := pubsub.NewSchedulerPublisher(mp, &m)
+		p := pubsub.NewSchedulerPublisher(mp, m)
 
 		err := p.PublishDue(ctx)
 		if !errors.Is(err, errorDummy) {
@@ -154,42 +155,24 @@ func TestPublisher(t *testing.T) {
 
 	t.Run("stops if the the consumer cannot be notified of the successful publishing", func(t *testing.T) {
 		var (
-			m    storageMock
+			m    stubs.StorageStub
 			feed = make(chan pubsub.DueMessage, 1)
 		)
 
 		feed <- pubsub.DueMessage{Topic: "foo", Envelope: &pubsub.Envelope{}}
 
-		m.consumeDueFunc = func(ctx context.Context) (<-chan pubsub.DueMessage, error) {
+		m.ConsumeDueFunc = func(ctx context.Context) (<-chan pubsub.DueMessage, error) {
 			return feed, nil
 		}
-		m.publishedFunc = func(ctx context.Context, message pubsub.DueMessage) error {
+		m.PublishedFunc = func(ctx context.Context, message pubsub.DueMessage) error {
 			return errorDummy
 		}
 
-		p := pubsub.NewSchedulerPublisher(noOpMarshallerPublisher, &m)
+		p := pubsub.NewSchedulerPublisher(noOpMarshallerPublisher, m)
 
 		err := p.PublishDue(ctx)
 		if !errors.Is(err, errorDummy) {
 			t.Fatalf("unexpected result consuming messages; got: %v", err)
 		}
 	})
-}
-
-type storageMock struct {
-	scheduleFunc   func(ctx context.Context, dueDate time.Time, topic string, messages ...*pubsub.Envelope) error
-	consumeDueFunc func(ctx context.Context) (<-chan pubsub.DueMessage, error)
-	publishedFunc  func(ctx context.Context, message pubsub.DueMessage) error
-}
-
-func (m *storageMock) Schedule(ctx context.Context, dueDate time.Time, topic string, messages ...*pubsub.Envelope) error {
-	return m.scheduleFunc(ctx, dueDate, topic, messages...)
-}
-
-func (m *storageMock) ConsumeDue(ctx context.Context) (<-chan pubsub.DueMessage, error) {
-	return m.consumeDueFunc(ctx)
-}
-
-func (m *storageMock) Published(ctx context.Context, message pubsub.DueMessage) error {
-	return m.publishedFunc(ctx, message)
 }

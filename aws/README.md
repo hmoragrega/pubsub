@@ -62,6 +62,29 @@ aws.NewSQSDirectPublisher(snsClient)
 aws.NewSQSPublisher(snsClient, map[string]string{})
 ```
 
+#### Scheduling
+When using a `pubsub.Scheduler` in combination with the SQS publisher you can leverage the normal
+message delay that SQS allows, in this way only scheduled messages with a due date than more than
+15 minutes will be sent to the scheduler storage, but published instead.
+
+You can use the `SQSSchedulerStorage` as both `EnvelopePubliser` and `SchedulerStorage`
+
+```go
+dbStorage := storage.NewPostgres("instanceID", "table", dbConn)
+sqsPub := NewSQSDirectPublisher(sqsTest)
+
+// With this storage, messages with delay < 15 min
+// will be directly published to SQS with the proper delay.
+// Otherwise, they will be stored in the database. 
+s := pubsub.NewSQSSchedulerStorage(sqsPub, dbStorage)
+
+// build the final scheduler/publisher
+scheduler := pubsub.NewSchedulerPublisher(pubsub.NewPublisher(sqsPub, marshaller), sqsStor)
+
+// publish message with 5 minutes delay. 
+scheduler.Delay(ctx, 5*time.Minutes, queuURL, message)
+```
+
 ## Queue Subscriber
 
 We use SQS to consume messages from a queue, using its queue URL:

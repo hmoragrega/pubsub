@@ -34,6 +34,10 @@ func NewSQSPublisher(sqs *sqs.Client, queueURLs map[string]string) *SQSPublisher
 
 // Publish a message to a SQS queue.
 func (p *SQSPublisher) Publish(ctx context.Context, queue string, envelopes ...*pubsub.Envelope) error {
+	return p.publishWithDelay(ctx, queue, 0, envelopes...)
+}
+
+func (p *SQSPublisher) publishWithDelay(ctx context.Context, queue string, delaySeconds int32, envelopes ...*pubsub.Envelope) error {
 	queueURL, err := p.queueURL(queue)
 	if err != nil {
 		return err
@@ -44,7 +48,7 @@ func (p *SQSPublisher) Publish(ctx context.Context, queue string, envelopes ...*
 			QueueUrl:          &queueURL,
 			MessageBody:       stringPtr(env.Body),
 			MessageAttributes: encodeSQSAttributes(env),
-			//DelaySeconds:    0,
+			DelaySeconds:      delaySeconds,
 		})
 		if err != nil {
 			return fmt.Errorf("cannot publish message %s: %w", env.ID, err)
