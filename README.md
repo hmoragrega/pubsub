@@ -95,9 +95,18 @@ You'll need a background process to publish the due pending messages. Instantiat
 call `PublishDue`  
 
 ```go
+import (
+    "github.com/hmoragrega/pubsub"
+    "github.com/hmoragrega/pubsub/schedule/storage/postgres"
+)
+
+// External storage to store the pending messages.
+storage := postgres.NewPostgres("instance-123", "pending_messages", dbClient)
+
 p := pubsub.NewSchedulerPublisher(marshaller, storage)
 
-// Blocks until context is terminated or an error occurs
+// Sends the due messages in a loop blocking until context
+// is terminated or an error occurs.
 if err := p.PublishDue(ctx); err != nil {
 	log.Fatal("error happened while published pending messages: %w", err)
 }
