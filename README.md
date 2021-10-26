@@ -263,13 +263,34 @@ at the same time.
 To initialize the router pass the unmarshaller and register all the subscribers along with the
  message handler associated to them.     
  
-**NOTE:** If you are using an enveloper publsiher and/or marshalling in your own terms, the router
-will use the `NoOpUnmarshaller` function wich will use the raw data `[]byte` slice for the message.
+**NOTE:** If you are using an enveloper publisher and/or marshalling in your own terms, the router
+will use the `NoOpUnmarshaller` function which will use the raw data `[]byte` slice for the message.
 
 Call `Run` on the router; it starts all the subscribers, and if all succeed, it will consume the
 messages in an endless loop, feeding them to the handlers after unmarshalling the message body.     
 
-If the handler does not return an error it will acknowledge the message as long as `DisableAutoAck` is false.   
+#### Message Acknowledgement
+
+By default, the router will acknowledge the message if the message handler does not return any
+error.
+
+If you want to control this behaviour you can override the `AckDecider` function, for example you can 
+use the provided `DisableAutoAck` to prevent the router from acknowledging the message automatically
+
+To manually acknowledge a message call
+```go
+msg.Ack(ctx)
+```
+To manually not-acknowledge a message use
+```
+msg.NAck(ctx)
+```
+If the messaging system supports it, the message can be re-scheduled with a delay.
+```go
+msg.ReSchedule(10 * time.Minute)
+```
+By design, all these operations can be called just once, and subsequent calls will return the result 
+of the first call 
 
 #### Message handler
 Register a message handler in the router using the method `Register`.    

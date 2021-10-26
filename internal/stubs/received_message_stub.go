@@ -2,20 +2,23 @@ package stubs
 
 import (
 	"context"
+	"time"
 
 	"github.com/hmoragrega/pubsub"
 )
 
 type ReceivedMessageStub struct {
-	IDFunc         func() string
-	NameFunc       func() string
-	KeyFunc        func() string
-	BodyFunc       func() []byte
-	VersionFunc    func() string
-	AttributesFunc func() pubsub.Attributes
-	AckFunc        func(ctx context.Context) error
-	NAckFunc       func(ctx context.Context) error
-	StringFunc     func() string
+	IDFunc            func() string
+	NameFunc          func() string
+	KeyFunc           func() string
+	BodyFunc          func() []byte
+	VersionFunc       func() string
+	AttributesFunc    func() pubsub.Attributes
+	AckFunc           func(ctx context.Context) error
+	NAckFunc          func(ctx context.Context) error
+	ReScheduleFunc    func(ctx context.Context, delay time.Duration) error
+	ReceivedCountFunc func() int
+	StringFunc        func() string
 }
 
 func NewNoOpReceivedMessage() *ReceivedMessageStub {
@@ -42,6 +45,9 @@ func NewNoOpReceivedMessage() *ReceivedMessageStub {
 			return nil
 		},
 		NAckFunc: func(ctx context.Context) error {
+			return nil
+		},
+		ReScheduleFunc: func(ctx context.Context, delay time.Duration) error {
 			return nil
 		},
 		StringFunc: func() string {
@@ -80,6 +86,14 @@ func (m *ReceivedMessageStub) Ack(ctx context.Context) error {
 
 func (m *ReceivedMessageStub) NAck(ctx context.Context) error {
 	return m.AckFunc(ctx)
+}
+
+func (m *ReceivedMessageStub) ReSchedule(ctx context.Context, delay time.Duration) error {
+	return m.ReScheduleFunc(ctx, delay)
+}
+
+func (m *ReceivedMessageStub) ReceivedCount() int {
+	return m.ReceivedCountFunc()
 }
 
 func (m *ReceivedMessageStub) String() string {

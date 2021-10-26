@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"time"
 )
 
 var (
@@ -28,7 +29,7 @@ type ReceivedMessage interface {
 	// Key grouping key of the message.
 	Key() string
 
-	// Body body of the message.
+	// Body of the message.
 	Body() []byte
 
 	// Version of the envelope.
@@ -42,6 +43,18 @@ type ReceivedMessage interface {
 
 	// NAck negative acknowledges the message.
 	NAck(ctx context.Context) error
+
+	// ReSchedule puts the message back in the same topic
+	// to be available again after a certain delay
+	// And Ack or Nack is expected to happen at this point,
+	// although not required.
+	ReSchedule(ctx context.Context, delay time.Duration) error
+
+	// ReceivedCount returns the number of times this message
+	// has been delivered.
+	// If the messaging system does not support this information
+	// it should be 0.
+	ReceivedCount() int
 
 	// String prints the message.
 	String() string
@@ -61,6 +74,9 @@ type Message struct {
 	Key string
 	// Data that we want to transmit.
 	Data interface{}
+	// ReceivedCount returns the number of times this message
+	// has been delivered.
+	ReceivedCount int
 	// Message attributes
 	Attributes Attributes
 
@@ -75,12 +91,13 @@ type Message struct {
 // it's unmarshalled body.
 func NewMessageFromReceived(msg ReceivedMessage, data interface{}) *Message {
 	return &Message{
-		ID:         msg.ID(),
-		Name:       msg.Name(),
-		Key:        msg.Key(),
-		Data:       data,
-		Attributes: msg.Attributes(),
-		received:   msg,
+		ID:            msg.ID(),
+		Name:          msg.Name(),
+		Key:           msg.Key(),
+		Data:          data,
+		ReceivedCount: msg.ReceivedCount(),
+		Attributes:    msg.Attributes(),
+		received:      msg,
 	}
 }
 
@@ -106,6 +123,28 @@ func (m *Message) NAck(ctx context.Context) error {
 		}
 
 		m.ackResult = m.received.NAck(ctx)
+	})
+
+	return m.ackResult
+}
+
+// ReSchedule puts the message back again in the topic/queue to be
+// available after a certain delay.
+//
+// Different implementations may need to act accordingly and
+// ack or n/ack the message.
+//
+// The common scenario is that a message has been failed to be processed
+// and, we don't want to receive it immediately, probably applying
+// a backoff strategy with increased delay times.
+func (m *Message) ReSchedule(ctx context.Context, delay time.Duration) error {
+	m.ackOnce.Do(func() {
+		if m.received == nil {
+			m.ackResult = ErrReceivedMessageNotAvailable
+			return
+		}
+
+		m.ackResult = m.received.ReSchedule(ctx, delay)
 	})
 
 	return m.ackResult

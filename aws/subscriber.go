@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"sync"
 	"time"
 
@@ -15,6 +16,8 @@ import (
 type status uint8
 
 const (
+	MaxChangeVisibilityDelay = 12 * time.Hour
+
 	started status = iota + 1
 	stopped
 )
@@ -23,6 +26,8 @@ var (
 	ErrSubscriberStopped = errors.New("subscriber stopped")
 	ErrAcknowledgement   = errors.New("cannot ack message")
 	ErrNAcknowledgement  = errors.New("cannot nack message")
+	ErrChangeVisibility  = errors.New("cannot change message visibility")
+	ErrReSchedule        = errors.New("cannot re-schedule message")
 	ErrAlreadyStarted    = errors.New("already started")
 	ErrAlreadyStopped    = errors.New("already stopped")
 	ErrMissingConfig     = errors.New("missing configuration")
@@ -105,6 +110,18 @@ type Subscriber struct {
 	// from subsequent retrieve requests after being retrieved.
 	visibilityTimeout int
 
+	// Passing an optional storage will allow simulating changing the visibility
+	// of a message above the SQS maximum of 15 minutes, in reality the messages
+	// will be re-scheduled for publishing in the storage, and the original one
+	// will be deleted from the queue.
+	// Since both operations cannot be done translationally, it could lead to
+	// duplicate messages if the message cannot be deleted from the queue.
+	storage pubsub.SchedulerStorage
+
+	// When re-scheduling a message above this threshold, the storage
+	// will be used. SQS Max visibility will be used otherwise (12 hours).
+	storageThreshold time.Duration
+
 	next        chan pubsub.Next
 	ackStrategy ackStrategy
 	stopped     chan struct{}
@@ -157,11 +174,28 @@ func WithAckWaitTime(ackWaitTime time.Duration) func(s *Subscriber) {
 	}
 }
 
+// WithStorage sets an optional storage that can be used to re-schedule
+// the message beyond the maximum message visibility in SQS (15 minutes)
+func WithStorage(storage pubsub.SchedulerStorage) func(s *Subscriber) {
+	return func(s *Subscriber) {
+		s.storage = storage
+	}
+}
+
+// WithStorageThreshold sets the threshold above which the storage will
+// be used when changing the message visibility.
+func WithStorageThreshold(threshold time.Duration) func(s *Subscriber) {
+	return func(s *Subscriber) {
+		s.storageThreshold = threshold
+	}
+}
+
 // NewSQSSubscriber creates a new SQS subscriber.
 func NewSQSSubscriber(sqs sqsSvc, queueURL string, opts ...func(s *Subscriber)) *Subscriber {
 	s := &Subscriber{
-		sqs:      sqs,
-		queueURL: queueURL,
+		sqs:              sqs,
+		queueURL:         queueURL,
+		storageThreshold: MaxChangeVisibilityDelay,
 	}
 	for _, o := range opts {
 		o(s)
@@ -341,12 +375,24 @@ func (s *Subscriber) wrapMessages(in []types.Message, ackNotifications chan<- st
 		if m.Body != nil {
 			body = *m.Body
 		}
+		var count int
+		if x, ok := m.Attributes["ApproximateReceiveCount"]; ok {
+			if c, err := strconv.Atoi(x); err == nil {
+				count = c
+			}
+		}
+		if x, ok := m.MessageAttributes[receiveCountAttrKey]; ok && x.StringValue != nil {
+			if c, err := strconv.Atoi(*x.StringValue); err == nil {
+				count += c
+			}
+		}
 		out[i] = &message{
 			id:               *msgID.StringValue,
 			version:          *version.StringValue,
 			key:              key,
 			name:             name,
 			body:             body,
+			receiveCount:     count,
 			attributes:       decodeCustomAttributes(m.MessageAttributes),
 			sqsMessageID:     m.MessageId,
 			sqsReceiptHandle: m.ReceiptHandle,
@@ -378,6 +424,45 @@ func (s *Subscriber) nack(_ context.Context, msg *message) error {
 	err := s.ackStrategy.NAck(context.Background(), msg)
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrNAcknowledgement, err)
+	}
+
+	return nil
+}
+
+func (s *Subscriber) changeVisibility(ctx context.Context, msg *message, delay time.Duration) error {
+	// use the storage if the delay is greater that SQS maximum.
+	if delay > s.storageThreshold {
+		if s.storage == nil {
+			return fmt.Errorf("%w: no storage available for re-scheduling a message above %v", ErrReSchedule, s.storageThreshold)
+		}
+
+		// since we are going to publish a new message the received count will reset
+		// we add the current receive count as an attribute, so we can sum it later.
+		msg.Attributes()[receiveCountAttrKey] = strconv.Itoa(msg.ReceivedCount())
+
+		err := s.storage.Schedule(ctx, time.Now().Add(delay), s.queueURL, &pubsub.Envelope{
+			ID:         msg.ID(),
+			Name:       msg.Name(),
+			Key:        msg.Key(),
+			Body:       msg.Body(),
+			Version:    msg.Version(),
+			Attributes: msg.Attributes(),
+		})
+		if err != nil {
+			return fmt.Errorf("%w: %v", ErrReSchedule, err)
+		}
+
+		// ack the message so it's not redelivered.
+		return s.ack(ctx, msg)
+	}
+
+	_, err := s.sqs.ChangeMessageVisibility(ctx, &sqs.ChangeMessageVisibilityInput{
+		QueueUrl:          &s.queueURL,
+		ReceiptHandle:     msg.sqsReceiptHandle,
+		VisibilityTimeout: int32(delay.Round(time.Second).Seconds()),
+	})
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrChangeVisibility, err)
 	}
 
 	return nil

@@ -1,4 +1,5 @@
-//+build integration
+//go:build integration
+// +build integration
 
 package aws
 
@@ -23,6 +24,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sqs/types"
 	"github.com/aws/smithy-go/logging"
 	"github.com/hmoragrega/pubsub"
+	"github.com/hmoragrega/pubsub/internal/stubs"
 	"github.com/hmoragrega/pubsub/marshaller"
 )
 
@@ -54,7 +56,9 @@ func TestMain(m *testing.M) {
 			))
 	}
 	if os.Getenv("DEBUG") == "true" {
-		opts = append(opts, config.WithLogger(logging.NewStandardLogger(os.Stderr)))
+		opts = append(opts,
+			config.WithClientLogMode(aws.LogRequestWithBody|aws.LogResponseWithBody),
+			config.WithLogger(logging.NewStandardLogger(os.Stderr)))
 	}
 	cfg, err := config.LoadDefaultConfig(context.Background(), opts...)
 	if err != nil {
@@ -336,6 +340,141 @@ func TestPubSubIntegration(t *testing.T) {
 		if err != nil {
 			t.Fatal("router stopped with error!", err)
 		}
+	}
+}
+
+func TestMessageReSchedule(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	var (
+		testTopic        = fmt.Sprintf("aws-pubsub-reschedule-%d", rand.Int31())
+		testQueue        = fmt.Sprintf("%s-queue", testTopic)
+		topicARN         = createTestTopic(ctx, t, testTopic)
+		queueURL         = createTestQueue(ctx, t, testQueue)
+		queueARN         = MustGetResource(GetQueueARN(ctx, sqsTest, queueURL))
+		testAttribute    = "custom"
+		storageThreshold = 3 * time.Second
+		bMarshaller      marshaller.ByteMarshaller
+		storage          stubs.StorageStub
+	)
+
+	subscribeTestTopic(ctx, t, topicARN, queueARN)
+	Must(AttachQueueForwardingPolicy(ctx, sqsTest, queueURL, queueARN, topicARN))
+
+	// Create publisher
+	awsPublisher := NewPublisher(snsTest, sqsTest, nil)
+	publisher := pubsub.NewPublisher(awsPublisher, &bMarshaller)
+
+	msg := &pubsub.Message{
+		ID:   "message-id",
+		Data: "my body is ready",
+		Name: "event name",
+		Key:  "event key",
+		Attributes: map[string]string{
+			testAttribute: testAttribute,
+		},
+	}
+
+	err := publisher.Publish(ctx, topicARN, msg)
+	if err != nil {
+		t.Fatal("cannot publish message", err)
+	}
+
+	sub := NewSQSSubscriber(
+		sqsTest,
+		queueURL,
+		WithVisibilityTimeout(int(time.Hour.Seconds())),
+		WithStorage(&storage),
+		WithStorageThreshold(storageThreshold),
+	)
+
+	var republished bool
+	storage.ScheduleFunc = func(ctx context.Context, dueDate time.Time, reScheduleQueueURL string, messages ...*pubsub.Envelope) error {
+		want := time.Now().Add(storageThreshold)
+		if dueDate.Sub(want).Seconds() > 1 {
+			return fmt.Errorf("unexpected due date; got %v, want %v", dueDate, want)
+		}
+		if got, want := reScheduleQueueURL, queueURL; got != want {
+			return fmt.Errorf("unexpected queue url; got %v, want %v", got, want)
+		}
+		if got := len(messages); got != 1 {
+			return fmt.Errorf("expected one re-scheduled message; got %d", got)
+		}
+
+		m := messages[0]
+		if got, want := string(m.Body), msg.Data.(string); got != want {
+			return fmt.Errorf("unexpected body for re-scheduled message; got %s, want %s", got, want)
+		}
+		if got, want := m.ID, msg.ID; got != want {
+			return fmt.Errorf("unexpected ID for re-scheduled message; got %s, want %s", got, want)
+		}
+		if got, want := m.Name, msg.Name; got != want {
+			return fmt.Errorf("unexpected ID for re-scheduled message; got %s, want %s", got, want)
+		}
+		if got, want := m.Key, msg.Key; got != want {
+			return fmt.Errorf("unexpected key for re-scheduled message; got %s, want %s", got, want)
+		}
+
+		go func() {
+			t.Logf("message send to storage")
+			<-time.NewTimer(storageThreshold).C
+			republished = true
+			_ = awsPublisher.Publish(ctx, queueURL, messages...)
+			t.Logf("message re-published")
+		}()
+
+		return nil
+	}
+
+	var handlerCount int
+	handler := func(_ context.Context, message *pubsub.Message) error {
+		handlerCount++
+		// goaws doesn't increment the received count attribute.
+		if os.Getenv("AWS") == "true" {
+			if want, got := handlerCount, message.ReceivedCount; want != got {
+				return fmt.Errorf("unexpected receive count; want %d, got %d", want, got)
+			}
+		}
+		if got, want := message.ID, msg.ID; got != want {
+			return fmt.Errorf("unexpected message ID in handler; want %s, got %s", want, got)
+		}
+		if len(message.Attributes) != 1 {
+			return fmt.Errorf("unexpected number of attributes in handler; got %+v", message.Attributes)
+		}
+
+		if republished {
+			t.Logf("success! message received after republishing from storage")
+			cancel()
+			return nil
+		}
+
+		// re-schedule incrementing one second
+		delay := time.Second * time.Duration(handlerCount)
+		t.Logf("message received %d times; delaying for %v", handlerCount, delay)
+
+		return message.ReSchedule(ctx, delay)
+	}
+
+	router := pubsub.Router{
+		AckDecider: pubsub.DisableAutoAck,
+		OnHandler: func(ctx context.Context, topic string, msg pubsub.ReceivedMessage, err error) error {
+			if err != nil {
+				return err
+			}
+			return nil
+		},
+	}
+
+	err = router.Register("topic", sub, pubsub.HandlerFunc(handler))
+	if err != nil {
+		t.Fatal("cannot register handler", err)
+	}
+	if err = router.Run(ctx); err != nil {
+		t.Errorf("unexpected error from the router: %v", err)
+	}
+	if err := ctx.Err(); err != context.Canceled {
+		t.Errorf("unexpected context error: %v", err)
 	}
 }
 

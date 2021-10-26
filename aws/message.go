@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 )
@@ -11,12 +12,13 @@ import (
 var stringDataType = aws.String("String")
 
 type message struct {
-	id         string
-	key        string
-	name       string
-	version    string
-	body       string
-	attributes map[string]string
+	id           string
+	key          string
+	name         string
+	version      string
+	body         string
+	receiveCount int
+	attributes   map[string]string
 
 	ackNotifications chan<- struct{}
 	ackOnce          sync.Once
@@ -69,14 +71,28 @@ func (m *message) NAck(ctx context.Context) error {
 	return m.ackResult
 }
 
+func (m *message) ReSchedule(ctx context.Context, delay time.Duration) error {
+	m.ackOnce.Do(func() {
+		m.ackNotifications <- struct{}{}
+		m.ackResult = m.subscriber.changeVisibility(ctx, m, delay)
+	})
+
+	return m.ackResult
+}
+
+func (m *message) ReceivedCount() int {
+	return m.receiveCount
+}
+
 func (m *message) String() string {
 	return fmt.Sprintf(
-		"{id: %s, key: %s, name: %s, version: %s, body: %s, attributtes: %+v}",
+		"{id: %s, key: %s, name: %s, version: %s, body: %s, receive_count: %d, attributtes: %+v; }",
 		m.id,
 		m.key,
 		m.name,
 		m.version,
 		m.body,
+		m.receiveCount,
 		m.attributes,
 	)
 }
