@@ -7,10 +7,36 @@ AWS.
 
 ## Publisher
 
-There are two available publishers for AWS
+There are three available publishers for AWS
 
 * SNS Publisher: publishes to a SNS topic.
 * SQS Publisher: publishes to directly to a SQS queue.
+* Publisher: combines the previous one allowing you to publish both to SNS topics and SQS queues. 
+
+```go
+snsPublisher := aws.NewPublisher(
+    snsClient,
+    sqsClient,
+    nil,
+)
+```
+
+With this setup you'll need to provide either a topic ARN or a queue URL to publish, you can also provide a 
+map between a unique resource IR and either topic ARN or a queue URL while still being able to publish to
+real AWS resources.
+
+```go
+snsPublisher := aws.NewPublisher(
+    snsClient,
+    sqsClient,
+    map[string]string{
+        "topic-one": "arn:aws:sns:us-east-2:444455556666:topic-one",
+        "topic-two": "arn:aws:sns:us-east-2:444455556666:topic-two",
+        "queue-one": "https://sqs.eu-west-3.amazonaws.com/444455556666/queue-one",
+        // ... more mappings
+    },
+)
+```
 
 ### SNS Publisher
 
@@ -119,6 +145,12 @@ is not acknowledged, blocking the subscriber indefinitely. To prevent this situa
 if the "acknowledgement wait time" expires, by default this value is 30s, but ideally this value should be greater than the queue or the
 subscriber visibility timeout. You can tweak the value using `WithAckWaitTime`.
 
+### ReScheduling messages with delay
+The strategy to re-schedule a message some delay will depend on the delay time
+
+* up to 12 hours: re-scheduling a message will be done by changing the message visibility.
+* less than 12 hours: as long as there is a scheduler storage available using `WithStorage` the message will be scheduled.
+
 ### Batch & Async acknowledgement
 We can enable batching the acknowledgements, this will reduce the number of requests to SQS, also,
 speed up the consumption of the next message.   
@@ -138,9 +170,6 @@ In this mode, the errors that may happen acknowledging a message will be deliver
 to acknowledge a message but the message will be added to the next batch anyways. Also, when the 
 subscriber stops, it will wait until all the pending acknowledgements are flushed, and the possible 
 errors returned as the result of the `Stop` method.
-
-### Dead Letter Queue
-
 
 ## SNS+SQS integration
 It's worth noting some gotchas while working with SNS+SQS

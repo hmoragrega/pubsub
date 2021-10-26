@@ -32,10 +32,9 @@ func NewSNSPublisher(sns *sns.Client, topicARNs map[string]string) *SNSPublisher
 func (p *SNSPublisher) Publish(ctx context.Context, topic string, envelopes ...*pubsub.Envelope) error {
 	var topicARN string
 
-	switch pos := strings.Index(strings.ToLower(topic), "arn:aws:sns"); pos {
-	case 0:
+	if isSNSTopicARN(topic) {
 		topicARN = topic
-	default:
+	} else {
 		arn, ok := p.topicARNs[topic]
 		if !ok {
 			return fmt.Errorf("%w: %s", ErrTopicNotFound, topic)
@@ -63,6 +62,10 @@ func (p *SNSPublisher) Publish(ctx context.Context, topic string, envelopes ...*
 		}
 	}
 	return nil
+}
+
+func isSNSTopicARN(s string) bool {
+	return strings.HasPrefix(s, "arn:aws:sns")
 }
 
 func stringPtr(b []byte) *string {

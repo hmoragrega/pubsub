@@ -20,23 +20,14 @@ func TestMessage_Ack(t *testing.T) {
 	})
 
 	t.Run("success", func(t *testing.T) {
-		m := pubsub.NewMessageFromReceived(&stubs.ReceivedMessageStub{
-			IDFunc: func() string {
-				return "123"
-			},
-			NameFunc: func() string {
-				return "foo"
-			},
-			KeyFunc: func() string {
-				return ""
-			},
-			AttributesFunc: func() pubsub.Attributes {
-				return nil
-			},
-			AckFunc: func(ctx context.Context) error {
-				return nil
-			},
-		}, nil)
+		rm := stubs.NewNoOpReceivedMessage()
+		rm.IDFunc = func() string {
+			return "123"
+		}
+		rm.NameFunc = func() string {
+			return "foo"
+		}
+		m := pubsub.NewMessageFromReceived(rm, nil)
 
 		err := m.Ack(context.Background())
 		if err != nil {

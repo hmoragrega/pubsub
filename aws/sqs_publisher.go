@@ -43,8 +43,12 @@ func (p *SQSPublisher) publishWithDelay(ctx context.Context, queue string, delay
 		return err
 	}
 
+	return publishSQSMessage(ctx, p.sqs, queueURL, delaySeconds, envelopes...)
+}
+
+func publishSQSMessage(ctx context.Context, c *sqs.Client, queueURL string, delaySeconds int32, envelopes ...*pubsub.Envelope) error {
 	for _, env := range envelopes {
-		_, err := p.sqs.SendMessage(ctx, &sqs.SendMessageInput{
+		_, err := c.SendMessage(ctx, &sqs.SendMessageInput{
 			QueueUrl:          &queueURL,
 			MessageBody:       stringPtr(env.Body),
 			MessageAttributes: encodeSQSAttributes(env),
@@ -58,7 +62,7 @@ func (p *SQSPublisher) publishWithDelay(ctx context.Context, queue string, delay
 }
 
 func (p *SQSPublisher) queueURL(queue string) (string, error) {
-	if p.isURL(queue) {
+	if isURL(queue) {
 		return queue, nil
 	}
 
@@ -70,7 +74,7 @@ func (p *SQSPublisher) queueURL(queue string) (string, error) {
 	return queueURL, nil
 }
 
-func (p *SQSPublisher) isURL(queue string) bool {
+func isURL(queue string) bool {
 	u, err := url.Parse(queue)
 
 	return err == nil && u.IsAbs()

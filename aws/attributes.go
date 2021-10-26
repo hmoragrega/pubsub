@@ -13,6 +13,7 @@ const (
 	versionAttributeKey   = "version"
 	keyAttributeKey       = "key"
 	nameAttributeKey      = "name"
+	receiveCountAttrKey   = "receive-count"
 	customAttributePrefix = "x-"
 )
 
@@ -55,9 +56,15 @@ func encodeAttributes(env *pubsub.Envelope) map[string]string {
 	if env.Key != "" {
 		attributes[keyAttributeKey] = env.Key
 	}
+	if v, ok := env.Attributes[receiveCountAttrKey]; ok {
+		attributes[receiveCountAttrKey] = v
+	}
 	for k, v := range env.Attributes {
 		attributes[customAttributePrefix+k] = v
 	}
+
+	// drop the receive-count as custom attribute.
+	delete(attributes, customAttributePrefix+receiveCountAttrKey)
 
 	return attributes
 }
@@ -65,7 +72,7 @@ func encodeAttributes(env *pubsub.Envelope) map[string]string {
 func decodeCustomAttributes(attributes map[string]sqstypes.MessageAttributeValue) map[string]string {
 	custom := make(map[string]string)
 	for k, v := range attributes {
-		if strings.Index(k, customAttributePrefix) != 0 {
+		if !strings.HasPrefix(k, customAttributePrefix) {
 			continue
 		}
 		k := k[len(customAttributePrefix):]
