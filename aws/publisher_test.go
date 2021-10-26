@@ -1,4 +1,5 @@
-//+build integration
+//go:build integration
+// +build integration
 
 package aws
 
@@ -20,6 +21,14 @@ func TestPublisher(t *testing.T) {
 	subscribeTestTopic(ctx, t, topicARN, queueARN)
 	Must(AttachQueueForwardingPolicy(ctx, sqsTest, queueURL, queueARN, topicARN))
 
+	sub := NewSQSSubscriber(sqsTest, queueURL)
+	msgs, err := sub.Subscribe()
+	Must(err)
+
+	t.Cleanup(func() {
+		_ = sub.Stop(context.Background())
+	})
+
 	t.Run("it can publish using the direct queue URL", func(t *testing.T) {
 		pub := NewPublisher(snsTest, sqsTest, nil)
 
@@ -28,19 +37,18 @@ func TestPublisher(t *testing.T) {
 			t.Fatalf("unexpected error publishing message; got %v", err)
 		}
 
-		requireReceivedEnvelope(t, queueURL, env)
+		requireReceivedEnvelope(t, msgs, env)
 	})
 
 	t.Run("it can publish using the direct topic ARN", func(t *testing.T) {
 		pub := NewPublisher(snsTest, sqsTest, nil)
-
 
 		err := pub.Publish(ctx, topicARN, env)
 		if err != nil {
 			t.Fatalf("unexpected error publishing message; got %v", err)
 		}
 
-		requireReceivedEnvelope(t, queueURL, env)
+		requireReceivedEnvelope(t, msgs, env)
 	})
 
 	t.Run("it can publish using a mapped queue URL", func(t *testing.T) {
@@ -53,7 +61,7 @@ func TestPublisher(t *testing.T) {
 			t.Fatalf("unexpected error publishing message; got %v", err)
 		}
 
-		requireReceivedEnvelope(t, queueURL, env)
+		requireReceivedEnvelope(t, msgs, env)
 	})
 
 	t.Run("it can publish using a mapped topic ARN", func(t *testing.T) {
@@ -66,22 +74,13 @@ func TestPublisher(t *testing.T) {
 			t.Fatalf("unexpected error publishing message; got %v", err)
 		}
 
-		requireReceivedEnvelope(t, queueURL, env)
+		requireReceivedEnvelope(t, msgs, env)
 	})
 }
 
-func requireReceivedEnvelope(t *testing.T, queueURL string, env *pubsub.Envelope) {
-	sub := NewSQSSubscriber(sqsTest, queueURL)
-
-	msgs, err := sub.Subscribe()
-	Must(err)
-
-	t.Cleanup(func() {
-		_ = sub.Stop(context.Background())
-	})
-
+func requireReceivedEnvelope(t *testing.T, msgs <-chan pubsub.Next, env *pubsub.Envelope) {
 	select {
-	case <-time.NewTimer(time.Second).C:
+	case <-time.NewTimer(2 * time.Second).C:
 		t.Fatal("timeout")
 	case msg := <-msgs:
 		if err := msg.Err; err != nil {
