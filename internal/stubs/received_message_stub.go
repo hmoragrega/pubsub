@@ -50,6 +50,9 @@ func NewNoOpReceivedMessage() *ReceivedMessageStub {
 		ReScheduleFunc: func(ctx context.Context, delay time.Duration) error {
 			return nil
 		},
+		ReceivedCountFunc: func() int {
+			return 0
+		},
 		StringFunc: func() string {
 			return ""
 		},

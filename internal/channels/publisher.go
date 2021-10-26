@@ -21,34 +21,29 @@ func (p *Publisher) Publish(ctx context.Context, topic string, envelopes ...*pub
 
 	for _, s := range p.subscribers[topic] {
 		for _, envelope := range envelopes {
+			rm := stubs.NewNoOpReceivedMessage()
+			rm.IDFunc = func() string {
+				return envelope.ID
+			}
+			rm.NameFunc = func() string {
+				return envelope.Name
+			}
+			rm.KeyFunc = func() string {
+				return envelope.Key
+			}
+			rm.BodyFunc = func() []byte {
+				return envelope.Body
+			}
+			rm.VersionFunc = func() string {
+				return envelope.Version
+			}
+			rm.AttributesFunc = func() pubsub.Attributes {
+				return envelope.Attributes
+			}
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
-			case s.next <- pubsub.Next{
-				Message: &stubs.ReceivedMessageStub{
-					IDFunc: func() string {
-						return envelope.ID
-					},
-					NameFunc: func() string {
-						return envelope.Name
-					},
-					KeyFunc: func() string {
-						return envelope.Key
-					},
-					BodyFunc: func() []byte {
-						return envelope.Body
-					},
-					VersionFunc: func() string {
-						return envelope.Version
-					},
-					AttributesFunc: func() pubsub.Attributes {
-						return envelope.Attributes
-					},
-					AckFunc: func(ctx context.Context) error {
-						return nil
-					},
-				},
-			}:
+			case s.next <- pubsub.Next{Message: rm}:
 			}
 		}
 	}
