@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/hmoragrega/pubsub"
 	"github.com/hmoragrega/pubsub/internal/stubs"
@@ -371,6 +372,84 @@ func TestRouter_Run(t *testing.T) {
 		err = router.Run(ctx)
 		if !errors.Is(err, pubsub.ErrRouterAlreadyStopped) {
 			t.Fatalf("unexpected error starting a stopped router; got %v", err)
+		}
+	})
+
+	t.Run("re-schedule messages with backoff", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Hour) //TODO
+		defer cancel()
+
+		var rescheduled int32 = 0
+		var want int32 = 2
+		router := pubsub.Router{
+			OnAck: func(ctx context.Context, topic string, msg pubsub.ReceivedMessage, err error) error {
+				// stop the router on ack errors.
+				if err != nil {
+					return err
+				}
+				// stop after all messages have been rescheduled correctly.
+				if want == atomic.AddInt32(&rescheduled, 1) {
+					cancel()
+				}
+				return nil
+			},
+			AckDecider: func(_ context.Context, _ string, _ pubsub.ReceivedMessage, _ error) pubsub.Acknowledgement {
+				// re-schedule all messages.
+				return pubsub.ReSchedule
+			},
+		}
+
+		defaultChan := make(chan pubsub.Next)
+		overrideChan := make(chan pubsub.Next)
+
+		// normal consumer with default exponential backoff
+		_ = router.Register("default", &stubs.SubscriberStub{
+			SubscribeFunc: func() (<-chan pubsub.Next, error) {
+				return defaultChan, nil
+			},
+			StopFunc: func(ctx context.Context) error {
+				return nil
+			},
+		}, handlerDummy)
+
+		// consumer with overridden linear backoff.
+		_ = router.Register("override", &stubs.SubscriberStub{
+			SubscribeFunc: func() (<-chan pubsub.Next, error) {
+				return overrideChan, nil
+			},
+			StopFunc: func(ctx context.Context) error {
+				return nil
+			},
+		}, handlerDummy, pubsub.WithBackoff(pubsub.LinearBackoff(time.Second)))
+
+		go func() {
+			m := stubs.NewNoOpReceivedMessage()
+			m.ReScheduleFunc = func(ctx context.Context, delay time.Duration) error {
+				if delay != time.Minute {
+					return fmt.Errorf("unexpected re-scheduling delay in the default backoff")
+				}
+				return nil
+			}
+			defaultChan <- pubsub.Next{Message: m}
+		}()
+
+		go func() {
+			m := stubs.NewNoOpReceivedMessage()
+			m.ReScheduleFunc = func(ctx context.Context, delay time.Duration) error {
+				if delay != time.Second {
+					return fmt.Errorf("unexpected re-scheduling delay in the overriden backoff")
+				}
+				return nil
+			}
+			overrideChan <- pubsub.Next{Message: m}
+		}()
+
+		err := router.Run(ctx)
+		if err != nil {
+			t.Fatalf("unexpected router error: %v", err)
+		}
+		if err := ctx.Err(); err != context.Canceled {
+			t.Fatalf("unexpected context error: %v", err)
 		}
 	})
 }

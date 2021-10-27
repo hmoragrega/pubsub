@@ -29,6 +29,7 @@ const (
 	NoOp Acknowledgement = iota
 	Ack
 	NAck
+	ReSchedule
 )
 
 // Consumer consumes messages from a single subscription.
@@ -37,6 +38,7 @@ type consumer struct {
 	handler    Handler
 	topic      string
 	next       <-chan Next
+	backoff    BackoffStrategy
 }
 
 // Checkpoint optional hooks executed during the message live cycle
@@ -63,6 +65,11 @@ type Router struct {
 	// and negatively acknowledged if there was.
 	// To disable the automatic acknowledgements pass the DisableAutoAck function
 	AckDecider func(ctx context.Context, topic string, msg ReceivedMessage, err error) Acknowledgement
+
+	// Backoff calculates the time to wait when re-scheduling a message.
+	// The default exponential back off will be used if not provided.
+	// Note that consumers can override the back off strategy.
+	Backoff BackoffStrategy
 
 	// StopTimeout time to wait for all the consumer to stop in a
 	// clean way. No timeout by default.
@@ -95,7 +102,15 @@ type Router struct {
 	mx        sync.RWMutex
 }
 
-func (r *Router) Register(topic string, subscriber Subscriber, handler Handler) error {
+type ConsumerOption func(*consumer)
+
+func WithBackoff(strategy BackoffStrategy) func(*consumer) {
+	return func(c *consumer) {
+		c.backoff = strategy
+	}
+}
+
+func (r *Router) Register(topic string, subscriber Subscriber, handler Handler, opts ...ConsumerOption) error {
 	r.mx.Lock()
 	defer r.mx.Unlock()
 
@@ -114,11 +129,16 @@ func (r *Router) Register(topic string, subscriber Subscriber, handler Handler) 
 	if r.consumers == nil {
 		r.consumers = make(map[string]*consumer)
 	}
-	r.consumers[topic] = &consumer{
+	c := &consumer{
 		topic:      topic,
 		subscriber: subscriber,
 		handler:    handler,
 	}
+	for _, opt := range opts {
+		opt(c)
+	}
+
+	r.consumers[topic] = c
 
 	return nil
 }
@@ -268,6 +288,8 @@ func (r *Router) consume(ctx context.Context, c *consumer) error {
 			err = msg.Ack(ctx)
 		case NAck:
 			err = msg.NAck(ctx)
+		case ReSchedule:
+			err = msg.ReSchedule(ctx, r.backoff(c, msg))
 		case NoOp:
 			continue
 		}
@@ -304,6 +326,9 @@ func (r *Router) start() error {
 	if r.Unmarshaller == nil {
 		r.Unmarshaller = NoOpUnmarshaller()
 	}
+	if r.Backoff == nil {
+		r.Backoff = &ExponentialBackoff{}
+	}
 
 	r.status = started
 	return nil
@@ -325,4 +350,12 @@ func (r *Router) ack(ctx context.Context, c *consumer, msg ReceivedMessage, err 
 	}
 
 	return r.AckDecider(ctx, c.topic, msg, err)
+}
+
+func (r *Router) backoff(c *consumer, msg *Message) time.Duration {
+	if c.backoff != nil {
+		return c.backoff.Delay(msg)
+	}
+
+	return r.Backoff.Delay(msg)
 }

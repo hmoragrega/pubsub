@@ -282,7 +282,7 @@ To manually acknowledge a message call
 msg.Ack(ctx)
 ```
 To manually not-acknowledge a message use
-```
+```go
 msg.NAck(ctx)
 ```
 If the messaging system supports it, the message can be re-scheduled with a delay.
@@ -291,6 +291,25 @@ msg.ReSchedule(10 * time.Minute)
 ```
 By design, all these operations can be called just once, and subsequent calls will return the result 
 of the first call 
+
+#### Re-Scheduling backoff
+If you decide to re-schedule a message in the `AckDecider` the router will use the default 
+exponential backoff strategy.
+
+You can change this in the router initialization
+```go
+r := pubsub.Router {
+	BackoffStrategy: pubsub.LinerBackoffStrategy(5*time.Minute)
+}
+```
+You can also override the backoff strategy for a given consumer
+```go
+var r pubsub.Router {
+	// config
+}
+// override backoff for a heavy task consumer.
+r.Register("heavy-task", subscriber, handler, pubsub.WithBackoff(pubsub.LinearBackoff(time.Hour)))
+```
 
 #### Message handler
 Register a message handler in the router using the method `Register`.    
