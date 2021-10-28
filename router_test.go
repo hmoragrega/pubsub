@@ -393,11 +393,11 @@ func TestRouter_Run(t *testing.T) {
 				}
 				return nil
 			},
-			AckDecider: func(_ context.Context, _ string, _ pubsub.ReceivedMessage, _ error) pubsub.Acknowledgement {
-				// re-schedule all messages.
-				return pubsub.ReSchedule
-			},
 		}
+
+		errHandler := pubsub.HandlerFunc(func(_ context.Context, _ *pubsub.Message) error {
+			return errors.New("dummy err")
+		})
 
 		defaultChan := make(chan pubsub.Next)
 		overrideChan := make(chan pubsub.Next)
@@ -410,7 +410,7 @@ func TestRouter_Run(t *testing.T) {
 			StopFunc: func(ctx context.Context) error {
 				return nil
 			},
-		}, handlerDummy)
+		}, errHandler, pubsub.WithAckDecider(pubsub.ReScheduleOnError))
 
 		// consumer with overridden linear backoff.
 		_ = router.Register("override", &stubs.SubscriberStub{
@@ -420,7 +420,7 @@ func TestRouter_Run(t *testing.T) {
 			StopFunc: func(ctx context.Context) error {
 				return nil
 			},
-		}, handlerDummy, pubsub.WithBackoff(pubsub.LinearBackoff(time.Second)))
+		}, errHandler, pubsub.WithAckDecider(pubsub.ReScheduleOnError), pubsub.WithBackoff(pubsub.LinearBackoff(time.Second)))
 
 		go func() {
 			m := stubs.NewNoOpReceivedMessage()
