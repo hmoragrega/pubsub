@@ -23,6 +23,8 @@ const (
 	stopped
 )
 
+type AckDecider func(ctx context.Context, topic string, msg ReceivedMessage, err error) Acknowledgement
+
 type Acknowledgement uint8
 
 const (
@@ -39,6 +41,7 @@ type consumer struct {
 	topic      string
 	next       <-chan Next
 	backoff    BackoffStrategy
+	ackDecider AckDecider
 }
 
 // Checkpoint optional hooks executed during the message live cycle
@@ -47,10 +50,25 @@ type consumer struct {
 // of the router.
 type Checkpoint func(ctx context.Context, topic string, msg ReceivedMessage, err error) error
 
+func AutoAck(_ context.Context, _ string, _ ReceivedMessage, err error) Acknowledgement {
+	if err != nil {
+		return NAck
+	}
+	return Ack
+}
+
 // DisableAutoAck is acknowledgement decider function that disables the router from
 // auto-acknowledging messages.
-func DisableAutoAck(ctx context.Context, topic string, msg ReceivedMessage, err error) Acknowledgement {
+func DisableAutoAck(_ context.Context, _ string, _ ReceivedMessage, _ error) Acknowledgement {
 	return NoOp
+}
+
+// ReScheduleOnError is acknowledgement decider function re-schedules on errors.
+func ReScheduleOnError(_ context.Context, _ string, _ ReceivedMessage, err error) Acknowledgement {
+	if err != nil {
+		return ReSchedule
+	}
+	return Ack
 }
 
 // Router groups consumers and runs them together.
@@ -64,7 +82,7 @@ type Router struct {
 	// By default, the message will be acknowledged if there was no error handling it
 	// and negatively acknowledged if there was.
 	// To disable the automatic acknowledgements pass the DisableAutoAck function
-	AckDecider func(ctx context.Context, topic string, msg ReceivedMessage, err error) Acknowledgement
+	AckDecider AckDecider
 
 	// Backoff calculates the time to wait when re-scheduling a message.
 	// The default exponential back off will be used if not provided.
@@ -103,6 +121,12 @@ type Router struct {
 }
 
 type ConsumerOption func(*consumer)
+
+func WithAckDecider(ackDecider AckDecider) func(*consumer) {
+	return func(c *consumer) {
+		c.ackDecider = ackDecider
+	}
+}
 
 func WithBackoff(strategy BackoffStrategy) func(*consumer) {
 	return func(c *consumer) {
@@ -326,6 +350,9 @@ func (r *Router) start() error {
 	if r.Unmarshaller == nil {
 		r.Unmarshaller = NoOpUnmarshaller()
 	}
+	if r.AckDecider == nil {
+		r.AckDecider = AutoAck
+	}
 	if r.Backoff == nil {
 		r.Backoff = &ExponentialBackoff{}
 	}
@@ -342,11 +369,8 @@ func (r *Router) messageContext(ctx context.Context, msg ReceivedMessage) contex
 }
 
 func (r *Router) ack(ctx context.Context, c *consumer, msg ReceivedMessage, err error) Acknowledgement {
-	if r.AckDecider == nil {
-		if err != nil {
-			return NAck
-		}
-		return Ack
+	if c.ackDecider != nil {
+		return c.ackDecider(ctx, c.topic, msg, err)
 	}
 
 	return r.AckDecider(ctx, c.topic, msg, err)
