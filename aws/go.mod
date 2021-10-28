@@ -10,7 +10,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sqs v1.3.1
 	github.com/aws/smithy-go v1.3.1
 	github.com/hashicorp/go-multierror v1.1.1
-	github.com/hmoragrega/pubsub v0.5.0
+	github.com/hmoragrega/pubsub v0.6.0
 )
 
 replace github.com/hmoragrega/pubsub => ../
