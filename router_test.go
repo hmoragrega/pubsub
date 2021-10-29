@@ -437,7 +437,7 @@ func TestRouter_Run(t *testing.T) {
 			m := stubs.NewNoOpReceivedMessage()
 			m.ReScheduleFunc = func(ctx context.Context, delay time.Duration) error {
 				if delay != time.Second {
-					return fmt.Errorf("unexpected re-scheduling delay in the overriden backoff")
+					return fmt.Errorf("unexpected re-scheduling delay in the overridden backoff")
 				}
 				return nil
 			}

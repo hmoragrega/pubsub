@@ -42,26 +42,7 @@ func (p *SNSPublisher) Publish(ctx context.Context, topic string, envelopes ...*
 		topicARN = arn
 	}
 
-	// every FIFO queue message needs to have a message group in SNS
-	// @TODO only for FIFO
-	// key := env.Key
-	// if key == "" {
-	//		key = "void"
-	//	}
-
-	for _, env := range envelopes {
-		_, err := p.sns.Publish(ctx, &sns.PublishInput{
-			TopicArn:          &topicARN,
-			Message:           stringPtr(env.Body),
-			MessageAttributes: encodeSNSAttributes(env),
-			//MessageDeduplicationId: &base64ID, // @TODO FIFO only
-			//MessageGroupId:         &key,      // @TODO FIFO only
-		})
-		if err != nil {
-			return fmt.Errorf("cannot publish message %s: %w", env.ID, err)
-		}
-	}
-	return nil
+	return publishSNSMessage(ctx, p.sns, topicARN, envelopes...)
 }
 
 func isSNSTopicARN(s string) bool {

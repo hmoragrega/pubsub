@@ -66,7 +66,7 @@ func publishSNSMessage(ctx context.Context, c *sns.Client, topicARN string, enve
 			//MessageGroupId:         &key,      // @TODO FIFO only
 		})
 		if err != nil {
-			return fmt.Errorf("cannot publish message %s: %w", env.ID, err)
+			return fmt.Errorf("cannot publish message %s: %w", env.ID, wrapError(err))
 		}
 	}
 	return nil

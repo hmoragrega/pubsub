@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"net/url"
 
+	"github.com/aws/aws-sdk-go-v2/aws/transport/http"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
+	"github.com/aws/smithy-go"
 
 	"github.com/hmoragrega/pubsub"
 )
@@ -55,7 +57,7 @@ func publishSQSMessage(ctx context.Context, c *sqs.Client, queueURL string, dela
 			DelaySeconds:      delaySeconds,
 		})
 		if err != nil {
-			return fmt.Errorf("cannot publish message %s: %w", env.ID, err)
+			return fmt.Errorf("cannot publish message %s: %w", env.ID, wrapError(err))
 		}
 	}
 	return nil
@@ -78,4 +80,38 @@ func isURL(queue string) bool {
 	u, err := url.Parse(queue)
 
 	return err == nil && u.IsAbs()
+}
+
+func wrapError(err error) error {
+	switch errorCode(err) {
+	case
+		"NotFound",
+		"AWS.SimpleQueueService.NonExistentQueue",
+		"AWS.SimpleNotificationService.NonExistentTopic":
+		return fmt.Errorf("%w: %v", pubsub.ErrResourceDoesNotExist, err)
+	}
+	return err
+}
+
+func errorCode(err error) string {
+	resErr := &http.ResponseError{}
+	if errors.As(err, &resErr) {
+		return errorAPICode(resErr.ResponseError.Err)
+	}
+
+	opErr := &smithy.OperationError{}
+	if errors.As(err, &opErr) {
+		return errorCode(opErr.Err)
+	}
+
+	return ""
+}
+
+func errorAPICode(err error) string {
+	apiErr := &smithy.GenericAPIError{}
+	if !errors.As(err, &apiErr) {
+		return ""
+	}
+
+	return apiErr.ErrorCode()
 }

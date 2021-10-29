@@ -143,7 +143,12 @@ func (x *Letterbox) Response(ctx context.Context, request, response *pubsub.Mess
 	response.SetAttribute(requestIDAttribute, requestID)
 	response.SetAttribute(requestedAtAttribute, requestedAt)
 
-	return x.Publisher.Publish(ctx, topic, response)
+	err := x.Publisher.Publish(ctx, topic, response)
+	if errors.Is(err, pubsub.ErrResourceDoesNotExist) {
+		return nil
+	}
+
+	return err
 }
 
 // HandleMessage is the message handler for the responses

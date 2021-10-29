@@ -14,7 +14,7 @@ func CreateTopic(ctx context.Context, svc *sns.Client, topicName string) (string
 		Name: &topicName,
 	})
 	if err != nil {
-		return "", fmt.Errorf("cannot create topic %s: %v", topicName, err)
+		return "", fmt.Errorf("cannot create topic %s: %w", topicName, err)
 	}
 
 	return *out.TopicArn, nil
@@ -26,7 +26,7 @@ func DeleteTopic(ctx context.Context, svc *sns.Client, topicARN string) error {
 		TopicArn: &topicARN,
 	})
 	if err != nil {
-		return fmt.Errorf("cannot delete topic %s: %v", topicARN, err)
+		return fmt.Errorf("cannot delete topic %s: %w", topicARN, wrapError(err))
 	}
 	return err
 }
@@ -42,7 +42,7 @@ func Subscribe(ctx context.Context, svc *sns.Client, topicARN, queueARN string) 
 		Protocol: aws.String("sqs"),
 	})
 	if err != nil {
-		return "", fmt.Errorf("cannot subscribe queue %s to topic %s: %v", queueARN, topicARN, err)
+		return "", fmt.Errorf("cannot subscribe queue %s to topic %s: %w", queueARN, topicARN, err)
 	}
 	return *out.SubscriptionArn, nil
 }
@@ -53,7 +53,7 @@ func Unsubscribe(ctx context.Context, svc *sns.Client, subscriptionARN string) e
 		SubscriptionArn: &subscriptionARN,
 	})
 	if err != nil {
-		return fmt.Errorf("cannot unsubscribe subscription %s: %v", subscriptionARN, err)
+		return fmt.Errorf("cannot unsubscribe subscription %s: %w", subscriptionARN, err)
 	}
 	return nil
 }
