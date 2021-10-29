@@ -24,7 +24,7 @@ func CreateQueue(ctx context.Context, svc *sqs.Client, queueName string) (string
 		QueueName: aws.String(queueName),
 	})
 	if err != nil {
-		return "", fmt.Errorf("cannot create queue %s: %v", queueName, err)
+		return "", fmt.Errorf("cannot create queue %s: %w", queueName, err)
 	}
 
 	return *out.QueueUrl, nil
@@ -37,7 +37,7 @@ func GetQueueARN(ctx context.Context, svc *sqs.Client, queueURL string) (string,
 		QueueUrl:       &queueURL,
 	})
 	if err != nil {
-		return "", fmt.Errorf("cannot get queue ARN %s: %v", queueURL, err)
+		return "", fmt.Errorf("cannot get queue ARN %s: %w", queueURL, err)
 	}
 
 	return out.Attributes["QueueArn"], nil
@@ -49,7 +49,7 @@ func DeleteQueue(ctx context.Context, svc *sqs.Client, queueURL string) error {
 		QueueUrl: aws.String(queueURL),
 	})
 	if err != nil {
-		return fmt.Errorf("cannot delete queue %s: %v", queueURL, err)
+		return fmt.Errorf("cannot delete queue %s: %w", queueURL, wrapError(err))
 	}
 	return err
 }
@@ -61,7 +61,7 @@ func SetQueueAttributes(ctx context.Context, svc *sqs.Client, queueURL string, a
 		Attributes: attributes,
 	})
 	if err != nil {
-		return fmt.Errorf("cannot set queue attributes: %v", err)
+		return fmt.Errorf("cannot set queue attributes: %w", err)
 	}
 	return nil
 }

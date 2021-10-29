@@ -5,6 +5,7 @@ package aws
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -100,4 +101,34 @@ func requireReceivedEnvelope(t *testing.T, msgs <-chan pubsub.Next, env *pubsub.
 			t.Fatalf("unexpected error acknowledging the message: %v", err)
 		}
 	}
+}
+
+func TestIdentifyDeletedResourceErrors(t *testing.T) {
+	ctx := context.Background()
+
+	topicARN := createTestTopic(ctx, t, "temp-topic")
+	queueURL := createTestQueue(ctx, t, "temp-queue")
+	env := &pubsub.Envelope{ID: "123", Version: "test:01", Body: []byte("data")}
+
+	pub := NewPublisher(snsTest, sqsTest, nil)
+
+	t.Run("can detect non existing topics", func(t *testing.T) {
+		Must(pub.Publish(ctx, topicARN, env))
+		Must(DeleteTopic(ctx, snsTest, topicARN))
+
+		err := pub.Publish(ctx, topicARN, env)
+		if !errors.Is(err, pubsub.ErrResourceDoesNotExist) {
+			t.Fatalf("expected error %v, got %+v", pubsub.ErrResourceDoesNotExist, err)
+		}
+	})
+
+	t.Run("can detect non existing queues", func(t *testing.T) {
+		Must(pub.Publish(ctx, queueURL, env))
+		Must(DeleteQueue(ctx, sqsTest, queueURL))
+
+		err := pub.Publish(ctx, queueURL, env)
+		if !errors.Is(err, pubsub.ErrResourceDoesNotExist) {
+			t.Fatalf("expected error %v, got %+v", pubsub.ErrResourceDoesNotExist, err)
+		}
+	})
 }

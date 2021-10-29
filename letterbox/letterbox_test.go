@@ -284,6 +284,21 @@ func TestLetterbox_ResponseFailures(t *testing.T) {
 			t.Fatal("unexpected error, got", err)
 		}
 	})
+	t.Run("response topic does not exists", func(t *testing.T) {
+		letterbox.Publisher = pubsub.PublisherFunc(func(ctx context.Context, topic string, envelopes ...*pubsub.Message) error {
+			return pubsub.ErrResourceDoesNotExist
+		})
+		err := letterbox.Response(ctx, &pubsub.Message{
+			Attributes: map[string]string{
+				responseTopicAttribute: "foo-topic",
+				requestIDAttribute:     "123",
+				requestedAtAttribute:   time.Now().Format(time.RFC3339Nano),
+			},
+		}, &pubsub.Message{})
+		if err != nil {
+			t.Fatal("unexpected error, got", err)
+		}
+	})
 }
 
 func TestLetterbox_HandleMessageFailures(t *testing.T) {

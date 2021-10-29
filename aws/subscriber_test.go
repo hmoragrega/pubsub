@@ -749,7 +749,8 @@ func TestDeadLetterQueue(t *testing.T) {
 func createTestQueue(ctx context.Context, t *testing.T, queueName string) string {
 	queueURL := MustGetResource(CreateQueue(ctx, sqsTest, queueName))
 	t.Cleanup(func() {
-		if err := DeleteQueue(context.Background(), sqsTest, queueURL); err != nil {
+		err := DeleteQueue(context.Background(), sqsTest, queueURL)
+		if err != nil && !errors.Is(err, pubsub.ErrResourceDoesNotExist) {
 			t.Fatal("cannot delete queue", err)
 		}
 	})
@@ -773,7 +774,8 @@ func subscribeTestTopic(ctx context.Context, t *testing.T, topicARN, queueURL st
 func createTestTopic(ctx context.Context, t *testing.T, topicName string) string {
 	queueURL := MustGetResource(CreateTopic(ctx, snsTest, topicName))
 	t.Cleanup(func() {
-		if err := DeleteTopic(context.Background(), snsTest, queueURL); err != nil {
+		err := DeleteTopic(context.Background(), snsTest, queueURL)
+		if err != nil && !errors.Is(err, pubsub.ErrResourceDoesNotExist) {
 			t.Fatal(err)
 		}
 	})
