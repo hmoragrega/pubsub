@@ -80,17 +80,33 @@ func WrapOnProcess(current OnProcess, hooks ...OnProcess) OnProcess {
 	}
 }
 
+// MessageContext optional hook that can be used to modify the context used while processing a message.
+type MessageContext func(ctx context.Context, consumerName string, message ReceivedMessage) context.Context
+
+// WrapMessageContext will call multiple message context hooks one after the other.
+func WrapMessageContext(current MessageContext, hooks ...MessageContext) MessageContext {
+	if current != nil {
+		hooks = append(hooks, current)
+	}
+	return func(ctx context.Context, consumerName string, msg ReceivedMessage) context.Context {
+		for _, hook := range hooks {
+			ctx = hook(ctx, consumerName, msg)
+		}
+		return ctx
+	}
+}
+
 // MessageModifier optional hook that can be used to modify the behaviour of all received messages.
-type MessageModifier func(ctx context.Context, message ReceivedMessage) ReceivedMessage
+type MessageModifier func(ctx context.Context, consumerName string, message ReceivedMessage) ReceivedMessage
 
 // WrapMessageModifier will call multiple message modifier hooks one after the other.
 func WrapMessageModifier(current MessageModifier, hooks ...MessageModifier) MessageModifier {
 	if current != nil {
 		hooks = append(hooks, current)
 	}
-	return func(ctx context.Context, msg ReceivedMessage) ReceivedMessage {
+	return func(ctx context.Context, consumerName string, msg ReceivedMessage) ReceivedMessage {
 		for _, hook := range hooks {
-			msg = hook(ctx, msg)
+			msg = hook(ctx, consumerName, msg)
 		}
 		return msg
 	}
@@ -143,13 +159,13 @@ type Router struct {
 	// that will be passed along during the message live-cycle:
 	//  * in the message handler
 	//  * in all the checkpoints.
-	MessageContext func(parent context.Context, message ReceivedMessage) context.Context
+	MessageContext MessageContext
 
 	// MessageContext is an optional function that modify the context
 	// that will be passed along during the message live-cycle:
 	//  * in the message handler
 	//  * in all the checkpoints.
-	MessageModifier func(ctx context.Context, message ReceivedMessage) ReceivedMessage
+	MessageModifier MessageModifier
 
 	// Optional callback invoked when the consumer
 	// reports an error.
@@ -353,8 +369,8 @@ func (r *Router) consume(ctx context.Context, c *consumer) error {
 }
 
 func (r *Router) processMessage(ctx context.Context, c *consumer, m ReceivedMessage) (err error) {
-	ctx = r.messageContext(ctx, m)
-	m = r.messageModifier(ctx, m)
+	ctx = r.messageContext(ctx, c, m)
+	m = r.messageModifier(ctx, c, m)
 
 	start := time.Now()
 	defer func() {
@@ -436,18 +452,18 @@ func (r *Router) start() error {
 	return nil
 }
 
-func (r *Router) messageContext(ctx context.Context, msg ReceivedMessage) context.Context {
+func (r *Router) messageContext(ctx context.Context, c *consumer, msg ReceivedMessage) context.Context {
 	if r.MessageContext == nil {
 		return ctx
 	}
-	return r.MessageContext(ctx, msg)
+	return r.MessageContext(ctx, c.name, msg)
 }
 
-func (r *Router) messageModifier(ctx context.Context, msg ReceivedMessage) ReceivedMessage {
+func (r *Router) messageModifier(ctx context.Context, c *consumer, msg ReceivedMessage) ReceivedMessage {
 	if r.MessageModifier == nil {
 		return msg
 	}
-	return r.MessageModifier(ctx, msg)
+	return r.MessageModifier(ctx, c.name, msg)
 }
 
 func (r *Router) ack(ctx context.Context, c *consumer, msg ReceivedMessage, err error) Acknowledgement {
