@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/hmoragrega/pubsub"
-	"github.com/hmoragrega/pubsub/internal/stubs"
+	"github.com/hmoragrega/pubsub/pubsubtest/stubs"
 )
 
 func TestByteMarshaller_Marshal(t *testing.T) {

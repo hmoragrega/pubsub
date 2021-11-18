@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/hmoragrega/pubsub"
-	"github.com/hmoragrega/pubsub/internal/channels"
 	"github.com/hmoragrega/pubsub/marshaller"
+	"github.com/hmoragrega/pubsub/pubsubtest/channels"
 )
 
 type sumRequest struct {

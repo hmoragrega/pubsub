@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/hmoragrega/pubsub"
-	"github.com/hmoragrega/pubsub/internal/stubs"
+	"github.com/hmoragrega/pubsub/pubsubtest/stubs"
 )
 
 var (
@@ -302,7 +302,7 @@ func TestRouter_Run(t *testing.T) {
 				return nil, nil
 			}),
 			AckDecider: pubsub.DisableAutoAck,
-			OnProcess: pubsub.WrapOnProcess(nil, func(_ context.Context, _ string, _ time.Duration, _ pubsub.ReceivedMessage, _ error) {}),
+			OnProcess:  pubsub.WrapOnProcess(nil, func(_ context.Context, _ string, _ time.Duration, _ pubsub.ReceivedMessage, _ error) {}),
 			MessageModifier: pubsub.WrapMessageModifier(nil, func(_ context.Context, _ string, msg pubsub.ReceivedMessage) pubsub.ReceivedMessage {
 				return msg
 			}),

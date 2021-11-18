@@ -23,9 +23,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/aws/aws-sdk-go-v2/service/sqs/types"
 	"github.com/aws/smithy-go/logging"
+
 	"github.com/hmoragrega/pubsub"
-	"github.com/hmoragrega/pubsub/internal/stubs"
 	"github.com/hmoragrega/pubsub/marshaller"
+	"github.com/hmoragrega/pubsub/pubsubtest/stubs"
 )
 
 var (

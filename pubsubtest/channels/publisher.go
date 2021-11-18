@@ -5,7 +5,7 @@ import (
 	"sync"
 
 	"github.com/hmoragrega/pubsub"
-	"github.com/hmoragrega/pubsub/internal/stubs"
+	"github.com/hmoragrega/pubsub/pubsubtest/stubs"
 )
 
 const queueBuffer = 100
@@ -21,24 +21,25 @@ func (p *Publisher) Publish(ctx context.Context, topic string, envelopes ...*pub
 
 	for _, s := range p.subscribers[topic] {
 		for _, envelope := range envelopes {
+			e := envelope
 			rm := stubs.NewNoOpReceivedMessage()
 			rm.IDFunc = func() string {
-				return envelope.ID
+				return e.ID
 			}
 			rm.NameFunc = func() string {
-				return envelope.Name
+				return e.Name
 			}
 			rm.KeyFunc = func() string {
-				return envelope.Key
+				return e.Key
 			}
 			rm.BodyFunc = func() []byte {
-				return envelope.Body
+				return e.Body
 			}
 			rm.VersionFunc = func() string {
-				return envelope.Version
+				return e.Version
 			}
 			rm.AttributesFunc = func() pubsub.Attributes {
-				return envelope.Attributes
+				return e.Attributes
 			}
 			select {
 			case <-ctx.Done():

@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/hmoragrega/pubsub"
-	"github.com/hmoragrega/pubsub/internal/stubs"
 	"github.com/hmoragrega/pubsub/marshaller"
+	"github.com/hmoragrega/pubsub/pubsubtest/stubs"
 )
 
 func TestPublisher_PublishMarshallFailure(t *testing.T) {
