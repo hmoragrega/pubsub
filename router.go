@@ -50,8 +50,29 @@ type consumer struct {
 // of the router.
 type Checkpoint func(ctx context.Context, consumerName string, msg ReceivedMessage, err error) error
 
+// WrapCheckpoint will call multiple on checkpoint hooks one after the other and return on the first error.
+func WrapCheckpoint(hooks ...Checkpoint) Checkpoint {
+	return func(ctx context.Context, consumerName string, msg ReceivedMessage, err error) error {
+		for _, hook := range hooks {
+			if err := hook(ctx, consumerName, msg, err); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+}
+
 // OnProcess optional hook called after processing a received message in a consumer.
 type OnProcess func(ctx context.Context, consumerName string, elapsed time.Duration, msg ReceivedMessage, err error)
+
+// WrapOnProcess will call multiple on process hooks one after the other.
+func WrapOnProcess(hooks ...OnProcess) OnProcess {
+	return func(ctx context.Context, consumerName string, elapsed time.Duration, msg ReceivedMessage, err error) {
+		for _, hook := range hooks {
+			hook(ctx, consumerName, elapsed, msg, err)
+		}
+	}
+}
 
 func AutoAck(_ context.Context, _ string, _ ReceivedMessage, err error) Acknowledgement {
 	if err != nil {
@@ -407,12 +428,4 @@ func (r *Router) backoff(c *consumer, msg *Message) time.Duration {
 	}
 
 	return r.Backoff.Delay(msg)
-}
-
-func WrapOnProcess(hooks ...OnProcess) OnProcess {
-	return func(ctx context.Context, consumerName string, elapsed time.Duration, msg ReceivedMessage, err error) {
-		for _, hook := range hooks {
-			hook(ctx, consumerName, elapsed, msg, err)
-		}
-	}
 }
