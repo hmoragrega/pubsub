@@ -24,7 +24,7 @@ func (f HandlerFunc) HandleMessage(ctx context.Context, message *Message) error 
 }
 
 // Dispatcher is a message handler middleware that can be used to register
-// different handlers for the same topic, based on the message name.
+// different handlers for the same consumer, based on the message name.
 func Dispatcher(handlers map[string]Handler) HandlerFunc {
 	return func(ctx context.Context, message *Message) error {
 		h, ok := handlers[message.Name]

@@ -9,7 +9,7 @@ func TestPublisherRecorder(t *testing.T) {
 	ctx := context.Background()
 	p := NewPublisherRecorder(NoOpPublisher())
 
-	err := p.Publish(ctx, "topic-1", &Message{
+	err := p.Publish(ctx, "name-1", &Message{
 		ID: "123",
 	}, &Message{
 		ID: "456",
@@ -18,7 +18,7 @@ func TestPublisherRecorder(t *testing.T) {
 		t.Fatal("unexpected error publishing", err)
 	}
 
-	err = p.Publish(ctx, "topic-2", &Message{
+	err = p.Publish(ctx, "name-2", &Message{
 		ID: "987",
 	}, &Message{
 		ID: "654",
@@ -35,13 +35,13 @@ func TestPublisherRecorder(t *testing.T) {
 		topic string
 		id    string
 	}{
-		{"topic-1", "123"},
-		{"topic-1", "456"},
-		{"topic-2", "987"},
-		{"topic-2", "654"},
+		{"name-1", "123"},
+		{"name-1", "456"},
+		{"name-2", "987"},
+		{"name-2", "654"},
 	} {
 		if got, want := p.Messages()[i].Topic, want.topic; got != want {
-			t.Fatalf("unexpected message topic at position %d; got %s, want %s", i, got, want)
+			t.Fatalf("unexpected message name at position %d; got %s, want %s", i, got, want)
 		}
 		if got, want := p.Messages()[i].Message.ID, want.id; got != want {
 			t.Fatalf("unexpected message id at position %d; got %s, want %s", i, got, want)
@@ -49,13 +49,13 @@ func TestPublisherRecorder(t *testing.T) {
 	}
 
 	for i, want := range []string{"123", "456"} {
-		if got := p.MessagesMap()["topic-1"][i].ID; got != want {
+		if got := p.MessagesMap()["name-1"][i].ID; got != want {
 			t.Fatalf("unexpected message id at position %d; got %s, want %s", i, got, want)
 		}
 	}
 
 	for i, want := range []string{"987", "654"} {
-		if got := p.TopicMessages("topic-2")[i].ID; got != want {
+		if got := p.TopicMessages("name-2")[i].ID; got != want {
 			t.Fatalf("unexpected message id at position %d; got %s, want %s", i, got, want)
 		}
 	}

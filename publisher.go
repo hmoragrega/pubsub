@@ -8,7 +8,7 @@ import (
 
 var (
 	// ErrResourceDoesNotExist indicates that the resource (topic, queue...) does not exist.
-	ErrResourceDoesNotExist = errors.New("topic does not exist")
+	ErrResourceDoesNotExist = errors.New("name does not exist")
 )
 
 // Publisher describes the top level method to publish messages.

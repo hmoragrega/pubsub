@@ -56,7 +56,7 @@ func TestPublisher_PublishHandlerSendMessages(t *testing.T) {
 		t.Fatalf("expected error; got %v, want %v", err, dummyErr)
 	}
 	if publishedTopic != topicToSend {
-		t.Fatalf("unpected pubslihing topic; got %v, want %v", publishedTopic, topicToSend)
+		t.Fatalf("unpected pubslihing name; got %v, want %v", publishedTopic, topicToSend)
 	}
 	if reflect.DeepEqual(messagesToSend, publishedMessages) {
 		t.Fatalf("expected error; got %v, want %v", err, dummyErr)
@@ -91,7 +91,7 @@ func TestPublisher_Wrapper(t *testing.T) {
 				t.Fatalf("message does not have the injected attribute; got %+v", e.Attributes)
 			}
 			if e.Name != topic {
-				t.Fatalf("topic should be used as event name; got %+v", e.Name)
+				t.Fatalf("name should be used as event name; got %+v", e.Name)
 			}
 		}
 		return nil
@@ -105,7 +105,7 @@ func TestPublisher_Wrapper(t *testing.T) {
 	)
 
 	ctx := context.WithValue(context.Background(), ctxKey, injectedValue)
-	err := p.Publish(ctx, "foo-topic", &pubsub.Message{})
+	err := p.Publish(ctx, "foo-name", &pubsub.Message{})
 	if err != nil {
 		t.Fatal("unexpected error publishing", err)
 	}

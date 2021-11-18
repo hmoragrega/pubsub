@@ -33,7 +33,7 @@ func TestPublisher(t *testing.T) {
 				return fmt.Errorf("due date is not in range: expected %v; got %v", expected, dueDate)
 			}
 			if gotTopic != topic {
-				return fmt.Errorf("unexpected topic: expected %v; got %v", topic, gotTopic)
+				return fmt.Errorf("unexpected name: expected %v; got %v", topic, gotTopic)
 			}
 			if len(envelopes) != 1 {
 				return fmt.Errorf("no messages sent")

@@ -31,17 +31,17 @@ func TestRouter_Run(t *testing.T) {
 		}
 	})
 
-	t.Run("cannot subscribe twice to the same topic", func(t *testing.T) {
+	t.Run("cannot subscribe twice using the same consumer name", func(t *testing.T) {
 		var router pubsub.Router
 
 		err := router.Register("same", &stubs.SubscriberStub{}, handlerDummy)
 		if err != nil {
-			t.Fatalf("unexpected error registering the topic: %v", err)
+			t.Fatalf("unexpected error registering the consumer: %v", err)
 		}
 
 		err = router.Register("same", &stubs.SubscriberStub{}, handlerDummy)
 		if err == nil {
-			t.Fatalf("unexpected success registering the topic again: %v", err)
+			t.Fatalf("unexpected success registering the consumer again: %v", err)
 		}
 	})
 
@@ -160,7 +160,7 @@ func TestRouter_Run(t *testing.T) {
 	})
 
 	t.Run("checkpoints are called", func(t *testing.T) {
-		subscriberTopic := "foo"
+		consumerName := "foo"
 
 		var checkpointsCalled int
 
@@ -171,7 +171,7 @@ func TestRouter_Run(t *testing.T) {
 			return nil
 		}
 
-		verifyCheckpoint := func(checkpoint string, topic string, message pubsub.ReceivedMessage, err error) error {
+		verifyCheckpoint := func(checkpoint string, name string, message pubsub.ReceivedMessage, err error) error {
 			checkpointsCalled++
 			if err != nil {
 				return err
@@ -179,23 +179,23 @@ func TestRouter_Run(t *testing.T) {
 			if message.(*stubs.ReceivedMessageStub) != msg {
 				return fmt.Errorf("%s mesage is not the equal; got %+v", checkpoint, message)
 			}
-			if topic != subscriberTopic {
-				return fmt.Errorf("%s topic is not correct; got %+v, want %s", checkpoint, topic, subscriberTopic)
+			if name != consumerName {
+				return fmt.Errorf("%s consumer is not correct; got %+v, want %s", checkpoint, name, consumerName)
 			}
 			return nil
 		}
 		router := pubsub.Router{
-			OnReceive: func(_ context.Context, topic string, message pubsub.ReceivedMessage, err error) error {
-				return verifyCheckpoint("OnReceive", topic, message, err)
+			OnReceive: func(_ context.Context, name string, message pubsub.ReceivedMessage, err error) error {
+				return verifyCheckpoint("OnReceive", name, message, err)
 			},
-			OnUnmarshal: func(_ context.Context, topic string, message pubsub.ReceivedMessage, err error) error {
-				return verifyCheckpoint("OnUnmarshal", topic, message, err)
+			OnUnmarshal: func(_ context.Context, name string, message pubsub.ReceivedMessage, err error) error {
+				return verifyCheckpoint("OnUnmarshal", name, message, err)
 			},
-			OnHandler: func(_ context.Context, topic string, message pubsub.ReceivedMessage, err error) error {
-				return verifyCheckpoint("OnHandler", topic, message, err)
+			OnHandler: func(_ context.Context, name string, message pubsub.ReceivedMessage, err error) error {
+				return verifyCheckpoint("OnHandler", name, message, err)
 			},
-			OnAck: func(_ context.Context, topic string, message pubsub.ReceivedMessage, err error) error {
-				return verifyCheckpoint("OnAck", topic, message, err)
+			OnAck: func(_ context.Context, name string, message pubsub.ReceivedMessage, err error) error {
+				return verifyCheckpoint("OnAck", name, message, err)
 			},
 		}
 
@@ -211,7 +211,7 @@ func TestRouter_Run(t *testing.T) {
 			},
 		}
 
-		err := router.Register(subscriberTopic, s, handlerDummy)
+		err := router.Register(consumerName, s, handlerDummy)
 		if err != nil {
 			t.Fatal("cannot register handler", err)
 		}

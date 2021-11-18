@@ -11,9 +11,9 @@ import (
 )
 
 var (
-	ErrTopicAlreadyRegistered = errors.New("topic already registered")
-	ErrRouterAlreadyRunning   = errors.New("router already running")
-	ErrRouterAlreadyStopped   = errors.New("router already stopped")
+	ErrConsumerAlreadyRegistered = errors.New("consumer already registered")
+	ErrRouterAlreadyRunning      = errors.New("router already running")
+	ErrRouterAlreadyStopped      = errors.New("router already stopped")
 )
 
 type status uint8
@@ -37,9 +37,9 @@ const (
 // Consumer consumes messages from a single subscription.
 type consumer struct {
 	subscriber Subscriber
-	handler    Handler
-	topic      string
-	next       <-chan Next
+	handler Handler
+	name    string
+	next    <-chan Next
 	backoff    BackoffStrategy
 	ackDecider AckDecider
 }
@@ -134,7 +134,7 @@ func WithBackoff(strategy BackoffStrategy) func(*consumer) {
 	}
 }
 
-func (r *Router) Register(topic string, subscriber Subscriber, handler Handler, opts ...ConsumerOption) error {
+func (r *Router) Register(name string, subscriber Subscriber, handler Handler, opts ...ConsumerOption) error {
 	r.mx.Lock()
 	defer r.mx.Unlock()
 
@@ -145,16 +145,16 @@ func (r *Router) Register(topic string, subscriber Subscriber, handler Handler, 
 		return ErrRouterAlreadyStopped
 	}
 
-	_, found := r.consumers[topic]
+	_, found := r.consumers[name]
 	if found {
-		return fmt.Errorf("%w: %s", ErrTopicAlreadyRegistered, topic)
+		return fmt.Errorf("%w: %s", ErrConsumerAlreadyRegistered, name)
 	}
 
 	if r.consumers == nil {
 		r.consumers = make(map[string]*consumer)
 	}
 	c := &consumer{
-		topic:      topic,
+		name:       name,
 		subscriber: subscriber,
 		handler:    handler,
 	}
@@ -162,7 +162,7 @@ func (r *Router) Register(topic string, subscriber Subscriber, handler Handler, 
 		opt(c)
 	}
 
-	r.consumers[topic] = c
+	r.consumers[name] = c
 
 	return nil
 }
@@ -211,7 +211,7 @@ func (r *Router) subscribe(consumers map[string]*consumer) ([]*consumer, error) 
 		g.Go(func() error {
 			next, subscribeErr := c.subscriber.Subscribe()
 			if subscribeErr != nil {
-				subscribeErr = fmt.Errorf("subscribe to topic %s failed: %w", c.topic, subscribeErr)
+				subscribeErr = fmt.Errorf("subscribe to name %s failed: %w", c.name, subscribeErr)
 			}
 
 			if subscribeErr == nil {
@@ -249,7 +249,7 @@ func (r *Router) stop(consumers []*consumer) error {
 		g.Go(func() error {
 			stopErr := c.subscriber.Stop(ctx)
 			if stopErr != nil {
-				stopErr = fmt.Errorf("error stopping subscriber for topic %s: %w", c.topic, stopErr)
+				stopErr = fmt.Errorf("error stopping subscriber for consumer %s: %w", c.name, stopErr)
 			}
 			return stopErr
 		})
@@ -265,7 +265,7 @@ func (r *Router) run(ctx context.Context, consumers []*consumer) (err error) {
 		g.Go(func() error {
 			consumerErr := r.consume(ctx, c)
 			if consumerErr != nil {
-				consumerErr = fmt.Errorf("error consuming from topic %s: %w", c.topic, consumerErr)
+				consumerErr = fmt.Errorf("error consuming from consumer %s: %w", c.name, consumerErr)
 			}
 			return consumerErr
 		})
@@ -293,7 +293,7 @@ func (r *Router) consume(ctx context.Context, c *consumer) error {
 			continue
 		}
 
-		data, err := r.Unmarshaller.Unmarshal(c.topic, rmsg)
+		data, err := r.Unmarshaller.Unmarshal(c.name, rmsg)
 		if err := r.check(ctx, r.OnUnmarshal, c, rmsg, err); err != nil {
 			return err
 		}
@@ -325,7 +325,7 @@ func (r *Router) consume(ctx context.Context, c *consumer) error {
 
 func (r *Router) check(ctx context.Context, f Checkpoint, c *consumer, msg ReceivedMessage, err error) error {
 	if f != nil {
-		return f(ctx, c.topic, msg, err)
+		return f(ctx, c.name, msg, err)
 	}
 	return nil
 }
@@ -370,10 +370,10 @@ func (r *Router) messageContext(ctx context.Context, msg ReceivedMessage) contex
 
 func (r *Router) ack(ctx context.Context, c *consumer, msg ReceivedMessage, err error) Acknowledgement {
 	if c.ackDecider != nil {
-		return c.ackDecider(ctx, c.topic, msg, err)
+		return c.ackDecider(ctx, c.name, msg, err)
 	}
 
-	return r.AckDecider(ctx, c.topic, msg, err)
+	return r.AckDecider(ctx, c.name, msg, err)
 }
 
 func (r *Router) backoff(c *consumer, msg *Message) time.Duration {
