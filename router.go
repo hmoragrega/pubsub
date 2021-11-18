@@ -37,9 +37,9 @@ const (
 // Consumer consumes messages from a single subscription.
 type consumer struct {
 	subscriber Subscriber
-	handler Handler
-	name    string
-	next    <-chan Next
+	handler    Handler
+	name       string
+	next       <-chan Next
 	backoff    BackoffStrategy
 	ackDecider AckDecider
 }
@@ -48,7 +48,7 @@ type consumer struct {
 //
 // Returning an error will stop the subscription, and trigger the shutdown
 // of the router.
-type Checkpoint func(ctx context.Context, topic string, msg ReceivedMessage, err error) error
+type Checkpoint func(ctx context.Context, consumerName string, msg ReceivedMessage, err error) error
 
 func AutoAck(_ context.Context, _ string, _ ReceivedMessage, err error) Acknowledgement {
 	if err != nil {
@@ -283,44 +283,55 @@ func (r *Router) consume(ctx context.Context, c *consumer) error {
 		case next = <-c.next:
 		}
 
-		rmsg, err := next.Message, next.Err
-		ctx := r.messageContext(ctx, rmsg)
-
-		if err := r.check(ctx, r.OnReceive, c, rmsg, err); err != nil {
-			return err
-		}
-		if err != nil {
+		if err := next.Err; err != nil {
+			if err := r.check(ctx, r.OnReceive, c, nil, err); err != nil {
+				return err
+			}
 			continue
 		}
 
-		data, err := r.Unmarshaller.Unmarshal(c.name, rmsg)
-		if err := r.check(ctx, r.OnUnmarshal, c, rmsg, err); err != nil {
-			return err
-		}
-		if err != nil {
-			continue
-		}
-
-		msg := NewMessageFromReceived(rmsg, data)
-		err = c.handler.HandleMessage(ctx, msg)
-		if err := r.check(ctx, r.OnHandler, c, rmsg, err); err != nil {
-			return err
-		}
-
-		switch r.ack(ctx, c, rmsg, err) {
-		case Ack:
-			err = msg.Ack(ctx)
-		case NAck:
-			err = msg.NAck(ctx)
-		case ReSchedule:
-			err = msg.ReSchedule(ctx, r.backoff(c, msg))
-		case NoOp:
-			continue
-		}
-		if err := r.check(ctx, r.OnAck, c, rmsg, err); err != nil {
+		if err := r.processMessage(ctx, c, next.Message); err != nil {
 			return err
 		}
 	}
+}
+
+func (r *Router) processMessage(ctx context.Context, c *consumer, m ReceivedMessage) (err error) {
+	ctx = r.messageContext(ctx, m)
+
+	if err := r.check(ctx, r.OnReceive, c, m, err); err != nil {
+		return err
+	}
+	if err != nil {
+		return nil
+	}
+
+	data, err := r.Unmarshaller.Unmarshal(c.name, m)
+	if err := r.check(ctx, r.OnUnmarshal, c, m, err); err != nil {
+		return err
+	}
+	if err != nil {
+		return nil
+	}
+
+	msg := NewMessageFromReceived(m, data)
+	err = c.handler.HandleMessage(ctx, msg)
+	if err := r.check(ctx, r.OnHandler, c, m, err); err != nil {
+		return err
+	}
+
+	switch r.ack(ctx, c, m, err) {
+	case Ack:
+		err = msg.Ack(ctx)
+	case NAck:
+		err = msg.NAck(ctx)
+	case ReSchedule:
+		err = msg.ReSchedule(ctx, r.backoff(c, msg))
+	case NoOp:
+		return nil
+	}
+
+	return r.check(ctx, r.OnAck, c, m, err)
 }
 
 func (r *Router) check(ctx context.Context, f Checkpoint, c *consumer, msg ReceivedMessage, err error) error {
@@ -362,7 +373,7 @@ func (r *Router) start() error {
 }
 
 func (r *Router) messageContext(ctx context.Context, msg ReceivedMessage) context.Context {
-	if r.MessageContext == nil || msg == nil {
+	if r.MessageContext == nil {
 		return ctx
 	}
 	return r.MessageContext(ctx, msg)
