@@ -54,6 +54,9 @@ type Checkpoint func(ctx context.Context, consumerName string, msg ReceivedMessa
 func WrapCheckpoint(hooks ...Checkpoint) Checkpoint {
 	return func(ctx context.Context, consumerName string, msg ReceivedMessage, err error) error {
 		for _, hook := range hooks {
+			if hook == nil {
+				continue
+			}
 			if err := hook(ctx, consumerName, msg, err); err != nil {
 				return err
 			}
@@ -69,6 +72,24 @@ type OnProcess func(ctx context.Context, consumerName string, elapsed time.Durat
 func WrapOnProcess(hooks ...OnProcess) OnProcess {
 	return func(ctx context.Context, consumerName string, elapsed time.Duration, msg ReceivedMessage, err error) {
 		for _, hook := range hooks {
+			if hook == nil {
+				continue
+			}
+			hook(ctx, consumerName, elapsed, msg, err)
+		}
+	}
+}
+
+// MessageModifier optional hook that can be used to modify the behaviour of all received messages.
+type MessageModifier func(ctx context.Context, message ReceivedMessage) ReceivedMessage
+
+// WrapMessageModifier will call multiple message modifier hooks one after the other.
+func WrapMessageModifier(hooks ...OnProcess) OnProcess {
+	return func(ctx context.Context, consumerName string, elapsed time.Duration, msg ReceivedMessage, err error) {
+		for _, hook := range hooks {
+			if hook == nil {
+				continue
+			}
 			hook(ctx, consumerName, elapsed, msg, err)
 		}
 	}
@@ -122,6 +143,12 @@ type Router struct {
 	//  * in the message handler
 	//  * in all the checkpoints.
 	MessageContext func(parent context.Context, message ReceivedMessage) context.Context
+
+	// MessageContext is an optional function that modify the context
+	// that will be passed along during the message live-cycle:
+	//  * in the message handler
+	//  * in all the checkpoints.
+	MessageModifier func(ctx context.Context, message ReceivedMessage) ReceivedMessage
 
 	// Optional callback invoked when the consumer
 	// reports an error.
@@ -326,6 +353,7 @@ func (r *Router) consume(ctx context.Context, c *consumer) error {
 
 func (r *Router) processMessage(ctx context.Context, c *consumer, m ReceivedMessage) (err error) {
 	ctx = r.messageContext(ctx, m)
+	m = r.messageModifier(ctx, m)
 
 	start := time.Now()
 	defer func() {
@@ -412,6 +440,13 @@ func (r *Router) messageContext(ctx context.Context, msg ReceivedMessage) contex
 		return ctx
 	}
 	return r.MessageContext(ctx, msg)
+}
+
+func (r *Router) messageModifier(ctx context.Context, msg ReceivedMessage) ReceivedMessage {
+	if r.MessageModifier == nil {
+		return msg
+	}
+	return r.MessageModifier(ctx, msg)
 }
 
 func (r *Router) ack(ctx context.Context, c *consumer, msg ReceivedMessage, err error) Acknowledgement {
