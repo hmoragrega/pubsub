@@ -50,6 +50,9 @@ type consumer struct {
 // of the router.
 type Checkpoint func(ctx context.Context, consumerName string, msg ReceivedMessage, err error) error
 
+// OnProcess optional hook called after processing a received message in a consumer.
+type OnProcess func(ctx context.Context, consumerName string, elapsed time.Duration, msg ReceivedMessage, err error)
+
 func AutoAck(_ context.Context, _ string, _ ReceivedMessage, err error) Acknowledgement {
 	if err != nil {
 		return NAck
@@ -117,7 +120,7 @@ type Router struct {
 
 	// Optional callback invoked after fully processing a message
 	// passing the elapsed time and the error, if any.
-	OnProcess func(ctx context.Context, consumerName string, elapsed time.Duration, msg ReceivedMessage, err error)
+	OnProcess OnProcess
 
 	consumers map[string]*consumer
 	status    status
