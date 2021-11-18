@@ -51,12 +51,12 @@ type consumer struct {
 type Checkpoint func(ctx context.Context, consumerName string, msg ReceivedMessage, err error) error
 
 // WrapCheckpoint will call multiple on checkpoint hooks one after the other and return on the first error.
-func WrapCheckpoint(hooks ...Checkpoint) Checkpoint {
+func WrapCheckpoint(current Checkpoint, hooks ...Checkpoint) Checkpoint {
+	if current != nil {
+		hooks = append(hooks, current)
+	}
 	return func(ctx context.Context, consumerName string, msg ReceivedMessage, err error) error {
 		for _, hook := range hooks {
-			if hook == nil {
-				continue
-			}
 			if err := hook(ctx, consumerName, msg, err); err != nil {
 				return err
 			}
@@ -69,12 +69,12 @@ func WrapCheckpoint(hooks ...Checkpoint) Checkpoint {
 type OnProcess func(ctx context.Context, consumerName string, elapsed time.Duration, msg ReceivedMessage, err error)
 
 // WrapOnProcess will call multiple on process hooks one after the other.
-func WrapOnProcess(hooks ...OnProcess) OnProcess {
+func WrapOnProcess(current OnProcess, hooks ...OnProcess) OnProcess {
+	if current != nil {
+		hooks = append(hooks, current)
+	}
 	return func(ctx context.Context, consumerName string, elapsed time.Duration, msg ReceivedMessage, err error) {
 		for _, hook := range hooks {
-			if hook == nil {
-				continue
-			}
 			hook(ctx, consumerName, elapsed, msg, err)
 		}
 	}
@@ -84,14 +84,15 @@ func WrapOnProcess(hooks ...OnProcess) OnProcess {
 type MessageModifier func(ctx context.Context, message ReceivedMessage) ReceivedMessage
 
 // WrapMessageModifier will call multiple message modifier hooks one after the other.
-func WrapMessageModifier(hooks ...OnProcess) OnProcess {
-	return func(ctx context.Context, consumerName string, elapsed time.Duration, msg ReceivedMessage, err error) {
+func WrapMessageModifier(current MessageModifier, hooks ...MessageModifier) MessageModifier {
+	if current != nil {
+		hooks = append(hooks, current)
+	}
+	return func(ctx context.Context, msg ReceivedMessage) ReceivedMessage {
 		for _, hook := range hooks {
-			if hook == nil {
-				continue
-			}
-			hook(ctx, consumerName, elapsed, msg, err)
+			msg = hook(ctx, msg)
 		}
+		return msg
 	}
 }
 
