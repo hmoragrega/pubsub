@@ -115,6 +115,10 @@ type Router struct {
 	// message cannot be acknowledged
 	OnAck Checkpoint
 
+	// Optional callback invoked after fully processing a message
+	// passing the elapsed time and the error, if any.
+	OnProcess func(ctx context.Context, consumerName string, elapsed time.Duration, msg ReceivedMessage, err error)
+
 	consumers map[string]*consumer
 	status    status
 	mx        sync.RWMutex
@@ -298,6 +302,13 @@ func (r *Router) consume(ctx context.Context, c *consumer) error {
 
 func (r *Router) processMessage(ctx context.Context, c *consumer, m ReceivedMessage) (err error) {
 	ctx = r.messageContext(ctx, m)
+
+	start := time.Now()
+	defer func() {
+		if p := r.OnProcess; p != nil {
+			p(ctx, c.name, time.Since(start), m, err)
+		}
+	}()
 
 	if err := r.check(ctx, r.OnReceive, c, m, err); err != nil {
 		return err
