@@ -408,3 +408,11 @@ func (r *Router) backoff(c *consumer, msg *Message) time.Duration {
 
 	return r.Backoff.Delay(msg)
 }
+
+func WrapOnProcess(hooks ...OnProcess) OnProcess {
+	return func(ctx context.Context, consumerName string, elapsed time.Duration, msg ReceivedMessage, err error) {
+		for _, hook := range hooks {
+			hook(ctx, consumerName, elapsed, msg, err)
+		}
+	}
+}
