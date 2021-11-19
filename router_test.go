@@ -303,9 +303,6 @@ func TestRouter_Run(t *testing.T) {
 			}),
 			AckDecider: pubsub.DisableAutoAck,
 			OnProcess:  pubsub.WrapOnProcess(nil, func(_ context.Context, _ string, _ time.Duration, _ pubsub.ReceivedMessage, _ error) {}),
-			MessageModifier: pubsub.WrapMessageModifier(nil, func(_ context.Context, _ string, msg pubsub.ReceivedMessage) pubsub.ReceivedMessage {
-				return msg
-			}),
 			MessageContext: pubsub.WrapMessageContext(nil, func(parent context.Context, _ string, _ pubsub.ReceivedMessage) context.Context {
 				return parent
 			}),

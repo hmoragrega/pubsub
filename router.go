@@ -113,22 +113,6 @@ func WrapMessageContext(current MessageContext, hooks ...MessageContext) Message
 	}
 }
 
-// MessageModifier optional hook that can be used to modify the behaviour of all received messages.
-type MessageModifier func(ctx context.Context, consumerName string, message ReceivedMessage) ReceivedMessage
-
-// WrapMessageModifier will call multiple message modifier hooks one after the other.
-func WrapMessageModifier(current MessageModifier, hooks ...MessageModifier) MessageModifier {
-	if current != nil {
-		hooks = append(hooks, current)
-	}
-	return func(ctx context.Context, consumerName string, msg ReceivedMessage) ReceivedMessage {
-		for _, hook := range hooks {
-			msg = hook(ctx, consumerName, msg)
-		}
-		return msg
-	}
-}
-
 func AutoAck(_ context.Context, _ string, _ ReceivedMessage, err error) Acknowledgement {
 	if err != nil {
 		return NAck
@@ -177,12 +161,6 @@ type Router struct {
 	//  * in the message handler
 	//  * in all the checkpoints.
 	MessageContext MessageContext
-
-	// MessageContext is an optional function that modify the context
-	// that will be passed along during the message live-cycle:
-	//  * in the message handler
-	//  * in all the checkpoints.
-	MessageModifier MessageModifier
 
 	// Optional callback invoked when the consumer
 	// reports an error.
@@ -394,7 +372,6 @@ func (r *Router) consume(ctx context.Context, c *consumer) error {
 
 func (r *Router) processMessage(ctx context.Context, c *consumer, m ReceivedMessage) (err error) {
 	ctx = r.messageContext(ctx, c, m)
-	m = r.messageModifier(ctx, c, m)
 
 	start := time.Now()
 	defer func() {
@@ -481,13 +458,6 @@ func (r *Router) messageContext(ctx context.Context, c *consumer, msg ReceivedMe
 		return ctx
 	}
 	return r.MessageContext(ctx, c.name, msg)
-}
-
-func (r *Router) messageModifier(ctx context.Context, c *consumer, msg ReceivedMessage) ReceivedMessage {
-	if r.MessageModifier == nil {
-		return msg
-	}
-	return r.MessageModifier(ctx, c.name, msg)
 }
 
 func (r *Router) ack(ctx context.Context, c *consumer, msg ReceivedMessage, err error) Acknowledgement {
