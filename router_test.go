@@ -312,6 +312,9 @@ func TestRouter_Run(t *testing.T) {
 			OnAck: pubsub.WrapCheckpoint(nil, func(_ context.Context, _ string, _ pubsub.ReceivedMessage, _ error) error {
 				return nil
 			}),
+			OnNext: pubsub.WrapNext(nil, func(ctx context.Context, consumerName string, next pubsub.Next) pubsub.Next {
+				return next
+			}),
 		}
 
 		ctx, cancel := context.WithCancel(context.Background())

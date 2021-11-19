@@ -80,6 +80,23 @@ func WrapOnProcess(current OnProcess, hooks ...OnProcess) OnProcess {
 	}
 }
 
+// OnNext optional hook called after a next message operation is received.
+// It can be used to modify the next message.
+type OnNext func(ctx context.Context, consumerName string, next Next) Next
+
+// WrapNext will call multiple on next hooks one after the other.
+func WrapNext(current OnNext, hooks ...OnNext) OnNext {
+	if current != nil {
+		hooks = append(hooks, current)
+	}
+	return func(ctx context.Context, consumerName string, next Next) Next {
+		for _, hook := range hooks {
+			next = hook(ctx, consumerName, next)
+		}
+		return next
+	}
+}
+
 // MessageContext optional hook that can be used to modify the context used while processing a message.
 type MessageContext func(ctx context.Context, consumerName string, message ReceivedMessage) context.Context
 
@@ -186,6 +203,10 @@ type Router struct {
 	// Optional callback invoked after fully processing a message
 	// passing the elapsed time and the error, if any.
 	OnProcess OnProcess
+
+	// Optional callback invoked after a consumer return from a
+	// consume operation.
+	OnNext OnNext
 
 	consumers map[string]*consumer
 	status    status
@@ -353,6 +374,9 @@ func (r *Router) consume(ctx context.Context, c *consumer) error {
 		case <-ctx.Done():
 			return nil
 		case next = <-c.next:
+			if r.OnNext != nil {
+				next = r.OnNext(ctx, c.name, next)
+			}
 		}
 
 		if err := next.Err; err != nil {
