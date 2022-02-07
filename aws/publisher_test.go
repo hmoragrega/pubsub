@@ -77,6 +77,18 @@ func TestPublisher(t *testing.T) {
 
 		requireReceivedEnvelope(t, msgs, env)
 	})
+
+	t.Run("a resource can be added", func(t *testing.T) {
+		pub := NewPublisher(snsTest, sqsTest, nil)
+		pub.AddResource("my-topic-alias", topicARN)
+
+		err := pub.Publish(ctx, "my-topic-alias", env)
+		if err != nil {
+			t.Fatalf("unexpected error publishing message; got %v", err)
+		}
+
+		requireReceivedEnvelope(t, msgs, env)
+	})
 }
 
 func requireReceivedEnvelope(t *testing.T, msgs <-chan pubsub.Next, env *pubsub.Envelope) {

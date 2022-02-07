@@ -15,7 +15,7 @@ env:
 up:
 	@docker compose up -d
 	@./scripts/wait-for-sqs.sh 20
-	@docker compose exec postgres /scripts/wait-for-postgres.sh 30
+	@docker compose exec -T  postgres /scripts/wait-for-postgres.sh 30
 
 .PHONY: down
 down:

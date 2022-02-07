@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/service/sns"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
@@ -17,24 +18,27 @@ var ErrTopicOrQueueNotFound = errors.New("could not find neither topic ARN nor q
 type Publisher struct {
 	sns       *sns.Client
 	sqs       *sqs.Client
-	resources map[string]string
+	resources sync.Map
 }
 
 // NewPublisher creates a new SNS+SQS publisher.
 func NewPublisher(sns *sns.Client, sqs *sqs.Client, resources map[string]string) *Publisher {
-	return &Publisher{
-		sns:       sns,
-		sqs:       sqs,
-		resources: resources,
+	p := &Publisher{
+		sns: sns,
+		sqs: sqs,
 	}
+	for k, v := range resources {
+		p.resources.Store(k, v)
+	}
+	return p
 }
 
 // Publish a message trough SNS.
 func (p *Publisher) Publish(ctx context.Context, resourceID string, envelopes ...*pubsub.Envelope) error {
 	// If the resource exists we get it, otherwise we use the identifier.
-	resource, _ := p.resources[resourceID]
-	if resource == "" {
-		resource = resourceID
+	resource := resourceID
+	if r, ok := p.resources.Load(resourceID); ok {
+		resource = r.(string)
 	}
 
 	// Note: topic ARN "are" technically URLs, so this check need to go first.
@@ -47,6 +51,10 @@ func (p *Publisher) Publish(ctx context.Context, resourceID string, envelopes ..
 	}
 
 	return fmt.Errorf("%w: %s", ErrTopicOrQueueNotFound, resource)
+}
+
+func (p *Publisher) AddResource(resourceID, resource string) {
+	p.resources.Store(resourceID, resource)
 }
 
 func publishSNSMessage(ctx context.Context, c *sns.Client, topicARN string, envelopes ...*pubsub.Envelope) error {
